@@ -145,6 +145,7 @@ export function updateBalanceDisplay(balance) {
 
 /**
  * Ask Dama backend to fetch real balance from the token owner's /dama endpoint.
+ * Sends: token (to identify which backend_url to call) + phone (player identifier).
  * Falls back to the URL balance param if unavailable.
  */
 async function fetchRealBalance(token, phone, username, fallback) {
@@ -152,14 +153,20 @@ async function fetchRealBalance(token, phone, username, fallback) {
     const { apiUrl } = await import('./socket.js');
     const res = await fetch(`${apiUrl}/player-balance`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Token': token,
+      },
       body: JSON.stringify({ token, phone, username }),
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(8000),
     });
     if (!res.ok) return fallback;
     const json = await res.json();
+    // Response shape: { ok:true, data:{ balance: number } }
     const bal = json?.data?.balance ?? json?.balance;
-    return (typeof bal === 'number' && !isNaN(bal)) ? bal : fallback;
+    if (bal === null || bal === undefined) return fallback;
+    const n = Number(bal);
+    return isNaN(n) ? fallback : n;
   } catch {
     return fallback;
   }
