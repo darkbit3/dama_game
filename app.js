@@ -364,9 +364,10 @@ Socket.on('player_updated', (msg) => {
       };
       PlayerRegistry.save(list);
     }
-    // If it's the current user, update the balance display immediately
+    // If it's the current user, refresh balance from owner backend
     if (msg.player.id === window.tgUserId) {
-      updateBalanceDisplay(msg.player.balance ?? window.DAMA_BALANCE);
+      // Don't use Dama DB balance — fetch real balance from owner backend
+      refreshBalance();
     }
   }
   // Refresh ready list if applicable

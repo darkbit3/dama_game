@@ -83,18 +83,22 @@ async function syncWithBackend(player) {
     if (res.ok) {
       const respObj = await res.json();
       const dbPlayer = respObj.data;
-      
+
       const list = load();
       const idx = list.findIndex(p => p.id === player.id);
       if (idx !== -1) {
         list[idx] = {
           ...list[idx],
-          balance: dbPlayer.balance,
-          wins: dbPlayer.wins,
-          losses: dbPlayer.losses,
-          draws: dbPlayer.draws,
-          lastIp: dbPlayer.last_ip,
-          lastDevice: dbPlayer.last_device
+          // ── Never overwrite balance from Dama DB for the current user ──
+          // The real balance comes from the owner backend via urlAuth.refreshBalance()
+          balance: list[idx].isMe
+            ? (window.DAMA_BALANCE ?? list[idx].balance ?? dbPlayer.balance)
+            : dbPlayer.balance,
+          wins:       dbPlayer.wins,
+          losses:     dbPlayer.losses,
+          draws:      dbPlayer.draws,
+          lastIp:     dbPlayer.last_ip,
+          lastDevice: dbPlayer.last_device,
         };
         save(list);
         if (typeof window.renderPlayerList === 'function') {
@@ -178,27 +182,31 @@ async function fetchPlayers() {
       const me = list.find(p => p.isMe);
       const updatedList = dbPlayers.map(dp => {
         const local = list.find(p => p.id === dp.id);
+        const isMe  = me ? me.id === dp.id : false;
         return {
-          id: dp.id,
-          name: dp.name,
-          photo: dp.photo,
-          isMe: me ? me.id === dp.id : false,
-          online: dp.online === 1,
-          wins: dp.wins,
-          losses: dp.losses,
-          draws: dp.draws,
-          balance: dp.balance,
-          bet: dp.bet,
+          id:         dp.id,
+          name:       dp.name,
+          photo:      dp.photo,
+          isMe,
+          online:     dp.online === 1,
+          wins:       dp.wins,
+          losses:     dp.losses,
+          draws:      dp.draws,
+          // ── For current user: always use owner-backend balance, not Dama DB ──
+          balance:    isMe
+            ? (window.DAMA_BALANCE ?? local?.balance ?? dp.balance)
+            : dp.balance,
+          bet:        dp.bet,
           pieceThemeId: dp.piece_theme,
-          isReady:  dp.is_ready === 1,
-          readyBet: dp.ready_bet || 0,
-          lastSeen: dp.last_seen * 1000 || Date.now(),
-          lastIp:   dp.last_ip,
+          isReady:    dp.is_ready === 1,
+          readyBet:   dp.ready_bet || 0,
+          lastSeen:   dp.last_seen * 1000 || Date.now(),
+          lastIp:     dp.last_ip,
           lastDevice: dp.last_device,
-          isAi:     dp.is_ai === 1,
+          isAi:       dp.is_ai === 1,
           difficulty: dp.difficulty || 'medium',
-          aiDepth:  dp.is_ai === 1 ? (dp.ai_depth ?? 10)  : undefined,
-          aiPct:    dp.is_ai === 1 ? (dp.ai_pct   ?? 50)  : undefined,
+          aiDepth:    dp.is_ai === 1 ? (dp.ai_depth ?? 10) : undefined,
+          aiPct:      dp.is_ai === 1 ? (dp.ai_pct   ?? 50) : undefined,
         };
       });
 

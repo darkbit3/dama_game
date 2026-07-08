@@ -654,7 +654,7 @@ export function renderPlayerList() {
   const myBet = window.currentBet || 0;
   const isReady = window.playerReady === true;
 
-  // Update my stats sidebar — all data from DB via fetchPlayers
+  // Update my stats sidebar — wins/losses/draws from Dama DB, balance from owner backend
   if (me) {
     const wEl  = document.getElementById('myWins');
     const lEl  = document.getElementById('myLosses');
@@ -663,7 +663,8 @@ export function renderPlayerList() {
     if (wEl)  wEl.textContent  = me.wins    || 0;
     if (lEl)  lEl.textContent  = me.losses  || 0;
     if (dEl)  dEl.textContent  = me.draws   || 0;
-    if (balEl) balEl.textContent = me.balance ?? 500;
+    // Always use owner-backend balance (window.DAMA_BALANCE), not Dama DB
+    if (balEl) balEl.textContent = Number(window.DAMA_BALANCE ?? me.balance ?? 500).toLocaleString();
   }
 
   function ballStyle(t) {
@@ -701,7 +702,7 @@ export function renderPlayerList() {
             : `<span class="pr-bet pr-bet-none">No bet set</span>`}
         </div>
         <div class="pr-balance-row">
-          💳 Balance: <strong>${(me.balance ?? 500).toLocaleString()} ETB</strong>
+          💳 Balance: <strong>${Number(window.DAMA_BALANCE ?? me.balance ?? 500).toLocaleString()} ETB</strong>
         </div>
       </div>
       <div class="pr-balls">
