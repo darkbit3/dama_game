@@ -5,7 +5,7 @@
    If any missing  → shows a blocking "Invalid Token" overlay
    ═══════════════════════════════════════════════════ */
 
-const REQUIRED_PARAMS = ['token', 'phone', 'username', 'balance'];
+const REQUIRED_PARAMS = ['token', 'phone'];
 const STORAGE_KEY     = 'dama_url_auth';
 
 /**
@@ -157,11 +157,11 @@ function setBalanceLoading(loading) {
 }
 
 /**
- * Ask Dama backend to fetch real balance from the token owner's /dama endpoint.
- * Sends: token (to identify which backend_url to call) + phone (player identifier).
- * Falls back to the URL balance param if unavailable.
+ * Ask Dama backend to fetch real balance and username from the token owner's /dama endpoint.
+ * Sends: token + phone (player identifier).
+ * Returns: { balance: number, username: string } or null on failure.
  */
-async function fetchRealBalance(token, phone, username, fallback) {
+async function fetchRealBalance(token, phone) {
   try {
     const { apiUrl } = await import('./socket.js');
     const res = await fetch(`${apiUrl}/player-balance`, {
@@ -170,18 +170,21 @@ async function fetchRealBalance(token, phone, username, fallback) {
         'Content-Type': 'application/json',
         'X-API-Token': token,
       },
-      body: JSON.stringify({ token, phone, username }),
+      body: JSON.stringify({ token, phone }),
       signal: AbortSignal.timeout(8000),
     });
-    if (!res.ok) return fallback;
+    if (!res.ok) return null;
     const json = await res.json();
-    // Response shape: { ok:true, data:{ balance: number } }
-    const bal = json?.data?.balance ?? json?.balance;
-    if (bal === null || bal === undefined) return fallback;
-    const n = Number(bal);
-    return isNaN(n) ? fallback : n;
-  } catch {
-    return fallback;
+    const data = json?.data || json;
+    if (!data) return null;
+
+    return {
+      balance: data.balance !== null && data.balance !== undefined ? Number(data.balance) : null,
+      username: data.username || null,
+    };
+  } catch (err) {
+    console.error('fetchRealBalance error:', err);
+    return null;
   }
 }
 
@@ -191,14 +194,21 @@ async function fetchRealBalance(token, phone, username, fallback) {
  */
 export async function refreshBalance() {
   const auth = (() => {
-    try { return JSON.parse(localStorage.getItem('dama_url_auth')); } catch { return null; }
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { return null; }
   })();
   if (!auth?.token || !auth?.phone) return;
 
   setBalanceLoading(true);
-  const fallback = window.DAMA_BALANCE ?? parseInt(auth.balance, 10) ?? 500;
-  const realBalance = await fetchRealBalance(auth.token, auth.phone, auth.username, fallback);
-  updateBalanceDisplay(realBalance);
+  const data = await fetchRealBalance(auth.token, auth.phone);
+  if (data && data.balance !== null) {
+    updateBalanceDisplay(data.balance);
+    if (data.username) {
+      window.DAMA_USERNAME = data.username;
+      auth.username = data.username;
+      auth.balance = data.balance.toString();
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(auth));
+    }
+  }
   setBalanceLoading(false);
 }
 
@@ -222,30 +232,42 @@ export function initUrlAuth() {
       window.DAMA_API_TOKEN = params.token;
       localStorage.setItem('dama_api_token', params.token);
 
-      // Expose phone + username as globals
+      // Expose phone as global, set default username/balance
       window.DAMA_PHONE    = params.phone;
-      window.DAMA_USERNAME = params.username;
-
-      const urlBalance = parseInt(params.balance, 10) || 500;
-      window.DAMA_BALANCE = urlBalance;
+      window.DAMA_USERNAME = params.username || 'Player';
+      window.DAMA_BALANCE  = parseInt(params.balance, 10) || 500;
 
       // Show spinner while fetching real balance
       setBalanceLoading(true);
-      fetchRealBalance(params.token, params.phone, params.username, urlBalance).then(realBalance => {
-        updateBalanceDisplay(realBalance);
+      fetchRealBalance(params.token, params.phone).then(data => {
         setBalanceLoading(false);
+        if (data) {
+          if (data.balance !== null) {
+            updateBalanceDisplay(data.balance);
+            params.balance = data.balance.toString();
+          }
+          if (data.username) {
+            window.DAMA_USERNAME = data.username;
+            params.username = data.username;
+            const nameEl = document.getElementById('tgName');
+            if (nameEl) nameEl.textContent = data.username;
+          }
 
-        // Auto-change the balance query parameter in the browser URL
-        try {
-          const url = new URL(window.location.href);
-          url.searchParams.set('balance', realBalance.toString());
-          window.history.replaceState({}, '', url.toString());
-        } catch (e) {
-          console.error('Failed to update URL search parameter:', e);
+          // Auto-change the balance/username query parameters in the browser URL
+          try {
+            const url = new URL(window.location.href);
+            if (data.balance !== null) url.searchParams.set('balance', data.balance.toString());
+            if (data.username) url.searchParams.set('username', data.username);
+            window.history.replaceState({}, '', url.toString());
+          } catch (e) {
+            console.error('Failed to update URL search parameters:', e);
+          }
+
+          // Save updated params to localStorage
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(params));
         }
+        resolve(params);
       });
-
-      resolve(params);
     } else {
       // Find which params are missing
       const missing = REQUIRED_PARAMS.filter(k => !params[k]);
