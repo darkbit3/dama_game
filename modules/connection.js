@@ -1,5 +1,7 @@
+import { apiUrl } from './socket.js';
+
 // Connection monitoring utility for the frontend
-export const initConnectionMonitor = (pingUrl = 'http://localhost:5000/api/health') => {
+export const initConnectionMonitor = (pingUrl = `${apiUrl}/health`) => {
   let currentState  = null;   // null = unknown, true = online, false = offline
   let hideTimer     = null;   // auto-hide after 5s
 

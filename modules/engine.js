@@ -682,7 +682,7 @@ let _aiWorkerBusy = false;
 
 /* ── Resolve the backend API base URL ─────────────────────────── */
 function _apiBase() {
-  return (window._socketRef?.apiUrl) || 'http://localhost:5000/api';
+  return window._socketRef?.apiUrl || window.Socket?.apiUrl || '';
 }
 
 /* ── Ask the Gemini-backed endpoint for the best move ─────────── */
@@ -921,7 +921,7 @@ export function endGame(winner, reason, isRemote = false) {
       const durationSec = Math.floor((Date.now() - G.startTime) / 1000);
       const { apiUrl } = window._socketRef || {};
       const apiToken = window.DAMA_API_TOKEN || localStorage.getItem('dama_api_token') || '';
-      const endpoint = (apiUrl || 'http://localhost:5000/api') + '/games/finish-local';
+      const endpoint = (apiUrl || window.Socket?.apiUrl || '') + '/games/finish-local';
 
       // In AI mode: human is BLACK, AI is WHITE — winner===BLACK means human won
       // result is always from human (player1) perspective

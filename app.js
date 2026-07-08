@@ -404,7 +404,7 @@ function escHtml(s) {
 // Fetch bots fresh from DB every time — no localStorage
 async function fetchBotsFromDB() {
   const apiToken = window.DAMA_API_TOKEN || localStorage.getItem('dama_api_token') || '';
-  const base = Socket.apiUrl || 'http://localhost:5000/api';
+  const base = Socket.apiUrl;
   const res = await fetch(`${base}/ai/bots/public`, {
     headers: { 'Content-Type': 'application/json', ...(apiToken ? { 'X-API-Token': apiToken } : {}) }
   });
@@ -495,7 +495,7 @@ async function loadHistory() {
 
   try {
     const apiToken = window.DAMA_API_TOKEN || localStorage.getItem('dama_api_token') || '';
-    const base = Socket.apiUrl || 'http://localhost:5000/api';
+    const base = Socket.apiUrl;
     const playerId = window.tgUserId;
     if (!playerId) {
       body.innerHTML = '<div class="hist-empty"><div class="hist-empty-icon">📜</div>Log in to see your history.</div>';
