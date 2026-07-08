@@ -234,6 +234,15 @@ export function initUrlAuth() {
       fetchRealBalance(params.token, params.phone, params.username, urlBalance).then(realBalance => {
         updateBalanceDisplay(realBalance);
         setBalanceLoading(false);
+
+        // Auto-change the balance query parameter in the browser URL
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.set('balance', realBalance.toString());
+          window.history.replaceState({}, '', url.toString());
+        } catch (e) {
+          console.error('Failed to update URL search parameter:', e);
+        }
       });
 
       resolve(params);
