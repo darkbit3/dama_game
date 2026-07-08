@@ -126,12 +126,29 @@ function showInvalidOverlay(missing) {
 }
 
 /**
+ * updateBalanceDisplay(balance)
+ * Single source of truth for updating the balance element.
+ * Call this whenever the balance changes.
+ */
+export function updateBalanceDisplay(balance) {
+  const balEl = document.getElementById('myBalance');
+  if (balEl) balEl.textContent = Number(balance).toLocaleString();
+  // Also keep window.DAMA_BALANCE in sync
+  window.DAMA_BALANCE = balance;
+  // Update registry cache for the current user
+  if (window.tgUserId && window.PlayerRegistry) {
+    const list = window.PlayerRegistry.load();
+    const me = list.find(p => p.id === window.tgUserId);
+    if (me) { me.balance = balance; window.PlayerRegistry.save(list); }
+  }
+}
+
+/**
  * Ask Dama backend to fetch real balance from the token owner's /dama endpoint.
  * Falls back to the URL balance param if unavailable.
  */
 async function fetchRealBalance(token, phone, username, fallback) {
   try {
-    // Import apiUrl dynamically to avoid circular deps
     const { apiUrl } = await import('./socket.js');
     const res = await fetch(`${apiUrl}/player-balance`, {
       method: 'POST',
@@ -175,12 +192,9 @@ export function initUrlAuth() {
       const urlBalance = parseInt(params.balance, 10) || 500;
       window.DAMA_BALANCE = urlBalance;
 
-      // Fetch real balance from owner's backend via Dama backend
+      // Fetch real balance from owner's backend — updates display when ready
       fetchRealBalance(params.token, params.phone, params.username, urlBalance).then(realBalance => {
-        window.DAMA_BALANCE = realBalance;
-        // Update balance display if already rendered
-        const balEl = document.getElementById('myBalance');
-        if (balEl) balEl.textContent = realBalance;
+        updateBalanceDisplay(realBalance);
       });
 
       resolve(params);

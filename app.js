@@ -11,7 +11,7 @@ import { Socket } from './modules/socket.js';
 import { initErrorBoundary } from './modules/errorBoundary.js';
 import { initConnectionMonitor } from './modules/connection.js';
 import { initAutoLogout, resetIdle } from './modules/autoLogout.js';
-import { initUrlAuth } from './modules/urlAuth.js';
+import { initUrlAuth, updateBalanceDisplay } from './modules/urlAuth.js';
 
 /* ── 0. URL Auth gate — MUST run before anything else ── */
 const urlAuth = await initUrlAuth();
@@ -106,11 +106,12 @@ initLoader(() => {
       if (window.playerReady && window.currentBet > 0) renderPlayerList();
     }, 8000);
 
-    // Update balance display
+    // Update balance display — prefer window.DAMA_BALANCE (from owner backend)
     const balEl = document.getElementById('myBalance');
     if (balEl) {
       const me = PlayerRegistry.load().find(p => p.id === window.tgUserId);
-      balEl.textContent = me?.balance ?? 500;
+      const bal = window.DAMA_BALANCE ?? me?.balance ?? 500;
+      balEl.textContent = Number(bal).toLocaleString();
     }
 
     renderPlayerList();
@@ -359,8 +360,7 @@ Socket.on('player_updated', (msg) => {
     }
     // If it's the current user, update the balance display immediately
     if (msg.player.id === window.tgUserId) {
-      const balEl = document.getElementById('myBalance');
-      if (balEl) balEl.textContent = msg.player.balance ?? balEl.textContent;
+      updateBalanceDisplay(msg.player.balance ?? window.DAMA_BALANCE);
     }
   }
   // Refresh ready list if applicable
