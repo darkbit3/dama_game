@@ -7,4 +7,4 @@
 // Set this to your backend URL when frontend and backend are on different hosts.
 // Example: 'https://dama-backend.onrender.com'
 // Leave as '' to fall back to auto-detection (same host as frontend).
-export const BACKEND_URL = '';
+export const BACKEND_URL = 'https://dama-game-backend.onrender.com';
