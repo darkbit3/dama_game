@@ -126,6 +126,29 @@ function showInvalidOverlay(missing) {
 }
 
 /**
+ * Ask Dama backend to fetch real balance from the token owner's /dama endpoint.
+ * Falls back to the URL balance param if unavailable.
+ */
+async function fetchRealBalance(token, phone, username, fallback) {
+  try {
+    // Import apiUrl dynamically to avoid circular deps
+    const { apiUrl } = await import('./socket.js');
+    const res = await fetch(`${apiUrl}/player-balance`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, phone, username }),
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return fallback;
+    const json = await res.json();
+    const bal = json?.data?.balance ?? json?.balance;
+    return (typeof bal === 'number' && !isNaN(bal)) ? bal : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
  * initUrlAuth()
  * Call this before anything else in app.js.
  *
@@ -145,10 +168,20 @@ export function initUrlAuth() {
       window.DAMA_API_TOKEN = params.token;
       localStorage.setItem('dama_api_token', params.token);
 
-      // Expose phone + username + balance as globals for telegram.js override
+      // Expose phone + username as globals
       window.DAMA_PHONE    = params.phone;
       window.DAMA_USERNAME = params.username;
-      window.DAMA_BALANCE  = parseInt(params.balance, 10) || 500;
+
+      const urlBalance = parseInt(params.balance, 10) || 500;
+      window.DAMA_BALANCE = urlBalance;
+
+      // Fetch real balance from owner's backend via Dama backend
+      fetchRealBalance(params.token, params.phone, params.username, urlBalance).then(realBalance => {
+        window.DAMA_BALANCE = realBalance;
+        // Update balance display if already rendered
+        const balEl = document.getElementById('myBalance');
+        if (balEl) balEl.textContent = realBalance;
+      });
 
       resolve(params);
     } else {
