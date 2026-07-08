@@ -11,7 +11,7 @@ import { Socket } from './modules/socket.js';
 import { initErrorBoundary } from './modules/errorBoundary.js';
 import { initConnectionMonitor } from './modules/connection.js';
 import { initAutoLogout, resetIdle } from './modules/autoLogout.js';
-import { initUrlAuth, updateBalanceDisplay } from './modules/urlAuth.js';
+import { initUrlAuth, updateBalanceDisplay, refreshBalance } from './modules/urlAuth.js';
 
 /* ── 0. URL Auth gate — MUST run before anything else ── */
 const urlAuth = await initUrlAuth();
@@ -145,6 +145,12 @@ function initApp() {
       modal.classList.remove('modal-show');
       setTimeout(() => modal.classList.add('hidden'), 300);
     }
+  });
+
+  // ── Balance refresh button ───────────────────────────────────
+  document.getElementById('balRefreshBtn')?.addEventListener('click', () => {
+    tgHaptic('light');
+    refreshBalance();
   });
 
   // ── How to Play ──────────────────────────────────────────────

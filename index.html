@@ -78,7 +78,11 @@
         <div class="tg-avatar" id="tgAvatar">♟</div>
         <div class="tb-user-info">
           <span class="tg-name" id="tgName">Player</span>
-          <span class="tb-balance">💰 <span id="myBalance">500</span> ETB</span>
+          <div class="tb-balance-row">
+            <span class="tb-balance">💰 <span id="myBalance">…</span> ETB</span>
+            <button class="tb-bal-refresh" id="balRefreshBtn" title="Refresh balance">↻</button>
+            <span class="tb-bal-spinner hidden" id="balSpinner"></span>
+          </div>
         </div>
       </div>
 

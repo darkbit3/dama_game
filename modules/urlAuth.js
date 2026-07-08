@@ -144,6 +144,19 @@ export function updateBalanceDisplay(balance) {
 }
 
 /**
+ * setBalanceLoading(bool) — show/hide spinner and disable/enable refresh btn
+ */
+function setBalanceLoading(loading) {
+  const spinner = document.getElementById('balSpinner');
+  const btn     = document.getElementById('balRefreshBtn');
+  if (spinner) spinner.classList.toggle('hidden', !loading);
+  if (btn) {
+    btn.classList.toggle('spinning', loading);
+    btn.disabled = loading;
+  }
+}
+
+/**
  * Ask Dama backend to fetch real balance from the token owner's /dama endpoint.
  * Sends: token (to identify which backend_url to call) + phone (player identifier).
  * Falls back to the URL balance param if unavailable.
@@ -173,6 +186,23 @@ async function fetchRealBalance(token, phone, username, fallback) {
 }
 
 /**
+ * refreshBalance() — fetch fresh balance from owner backend and update display.
+ * Exported so it can be called from anywhere.
+ */
+export async function refreshBalance() {
+  const auth = (() => {
+    try { return JSON.parse(localStorage.getItem('dama_url_auth')); } catch { return null; }
+  })();
+  if (!auth?.token || !auth?.phone) return;
+
+  setBalanceLoading(true);
+  const fallback = window.DAMA_BALANCE ?? parseInt(auth.balance, 10) ?? 500;
+  const realBalance = await fetchRealBalance(auth.token, auth.phone, auth.username, fallback);
+  updateBalanceDisplay(realBalance);
+  setBalanceLoading(false);
+}
+
+/**
  * initUrlAuth()
  * Call this before anything else in app.js.
  *
@@ -199,9 +229,11 @@ export function initUrlAuth() {
       const urlBalance = parseInt(params.balance, 10) || 500;
       window.DAMA_BALANCE = urlBalance;
 
-      // Fetch real balance from owner's backend — updates display when ready
+      // Show spinner while fetching real balance
+      setBalanceLoading(true);
       fetchRealBalance(params.token, params.phone, params.username, urlBalance).then(realBalance => {
         updateBalanceDisplay(realBalance);
+        setBalanceLoading(false);
       });
 
       resolve(params);

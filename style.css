@@ -271,6 +271,38 @@ body {
 .tb-user-info { display:flex;flex-direction:column;gap:1px;min-width:0; }
 .tg-name { font-family:'Cinzel',serif;font-size:.82rem;font-weight:700;color:var(--cream);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:90px; }
 .tb-balance { font-size:.68rem;font-weight:700;color:#4cde80;letter-spacing:.04em; }
+
+.tb-balance-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tb-bal-refresh {
+  background: none;
+  border: none;
+  color: rgba(76,222,128,.6);
+  font-size: .75rem;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  transition: transform .3s, color .2s;
+  touch-action: manipulation;
+}
+.tb-bal-refresh:hover { color: #4cde80; }
+.tb-bal-refresh.spinning { animation: balSpin .7s linear infinite; }
+
+@keyframes balSpin { to { transform: rotate(360deg); } }
+
+.tb-bal-spinner {
+  width: 8px; height: 8px;
+  border: 1.5px solid rgba(76,222,128,.3);
+  border-top-color: #4cde80;
+  border-radius: 50%;
+  animation: balSpin .7s linear infinite;
+  display: inline-block;
+}
+.tb-bal-spinner.hidden { display: none; }
 .tb-logo { display:flex;align-items:center;gap:5px;font-family:'Cinzel',serif;font-weight:900;font-size:.9rem;letter-spacing:.18em;color:var(--gold);flex-shrink:0; }
 .tb-countdown { display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0; }
 .cd-ring { position:relative;width:40px;height:40px; }
