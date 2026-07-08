@@ -6,10 +6,18 @@ let _kicked = false;
 let _playerId = null;
 const _sendQueue = [];   // messages queued while socket is not yet open
 
+import { BACKEND_URL } from '../config.js';
+
 // Determine backend server URL
 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const wsUrl = isLocal ? 'ws://localhost:5000' : `ws://${window.location.host}`;
-export const apiUrl = isLocal ? 'http://localhost:5000/api' : `${window.location.protocol}//${window.location.host}/api`;
+
+// If a BACKEND_URL is set in config.js, use it; otherwise auto-detect.
+const _backendBase = BACKEND_URL
+  ? BACKEND_URL.replace(/\/$/, '')
+  : (isLocal ? 'http://localhost:5000' : `${window.location.protocol}//${window.location.host}`);
+
+const wsUrl = _backendBase.replace(/^http/, 'ws');
+export const apiUrl = _backendBase + '/api';
 
 // ── Session Token ──────────────────────────────────────────────────────────
 // Each browser tab / device gets a unique session token stored in sessionStorage.
