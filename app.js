@@ -66,24 +66,26 @@ async function sendStartBet(gameId, betAmount, mode, player2Id = null) {
 
     const json = await res.json();
     const data = json?.data || json;
-    showBetAuditToast(data?.betLog || null, betAmount);
+    showBetAuditModal(data?.betLog || null, betAmount);
   } catch (err) {
-    showBetAuditToast(null, betAmount, err.message);
+    showBetAuditModal(null, betAmount, err.message);
   }
 }
 
 /**
- * showBetAuditToast — renders request/response details inside the game screen.
+ * showBetAuditModal — opens the full-screen audit modal with
+ * complete request / response JSON and a one-tap copy button.
  */
-function showBetAuditToast(betLog, betAmount, fetchError = null) {
-  const container = document.getElementById('betAuditToast');
-  if (!container) return;
+function showBetAuditModal(betLog, betAmount, fetchError = null) {
+  const modal  = document.getElementById('betAuditModal');
+  const body   = document.getElementById('betAuditBody');
+  const copyBtn = document.getElementById('betAuditCopyBtn');
+  const closeBtn = document.getElementById('betAuditClose');
+  const closeBtn2 = document.getElementById('betAuditCloseBtn');
+  if (!modal || !body) return;
 
-  // No bet — hide silently
-  if (betAmount <= 0) {
-    container.classList.add('hidden');
-    return;
-  }
+  // No bet — don't open
+  if (betAmount <= 0) return;
 
   const status = fetchError ? 'error'
     : betLog?.skipped ? 'skipped'
@@ -94,9 +96,9 @@ function showBetAuditToast(betLog, betAmount, fetchError = null) {
     failed:     '#e74c3c',
     error:      '#e74c3c',
     no_backend: '#f0c94a',
-    skipped:    '#999',
-    unknown:    '#999',
-  }[status] || '#999';
+    skipped:    '#aaa',
+    unknown:    '#aaa',
+  }[status] || '#aaa';
 
   const statusLabel = {
     success:    '✔ Deducted',
@@ -107,37 +109,84 @@ function showBetAuditToast(betLog, betAmount, fetchError = null) {
     unknown:    '? Unknown',
   }[status] || status;
 
-  const reqBody  = betLog?.requestBody  ? JSON.stringify(betLog.requestBody,  null, 2) : '—';
-  const respBody = betLog?.responseBody ? JSON.stringify(betLog.responseBody, null, 2) : (fetchError || betLog?.error || '—');
-  const endpoint = betLog?.backendUrl ? betLog.backendUrl.replace(/\/$/, '') + '/dama' : '—';
+  const reqBody  = betLog?.requestBody
+    ? JSON.stringify(betLog.requestBody,  null, 2)
+    : '—';
+  const respBody = betLog?.responseBody
+    ? JSON.stringify(betLog.responseBody, null, 2)
+    : (fetchError || betLog?.error || '—');
+  const endpoint = betLog?.backendUrl
+    ? betLog.backendUrl.replace(/\/$/, '') + '/dama'
+    : '—';
 
-  container.innerHTML = `
-    <div class="bat-header">
-      <span class="bat-title">💸 Bet Deduction</span>
-      <span class="bat-status" style="color:${statusColor};">${statusLabel}</span>
-      <button class="bat-close" onclick="document.getElementById('betAuditToast').classList.add('hidden')">✕</button>
+  // Build audit payload for copying
+  const auditPayload = {
+    status,
+    amount: betAmount,
+    endpoint,
+    request:  betLog?.requestBody  || null,
+    response: betLog?.responseBody || null,
+    error:    fetchError || betLog?.error || null,
+  };
+
+  // Render body content
+  body.innerHTML = `
+    <div class="audit-status-row">
+      <span class="audit-status-pill" style="background:${statusColor}22;color:${statusColor};border:1px solid ${statusColor}55;">${statusLabel}</span>
+      <span class="audit-amount">${betAmount.toLocaleString()} <small>ETB</small></span>
     </div>
-    <div class="bat-row">
-      <span class="bat-lbl">Amount</span>
-      <span class="bat-val gold">${betAmount.toLocaleString()} ETB</span>
+    <div class="audit-field">
+      <div class="audit-field-label">🌐 ENDPOINT</div>
+      <div class="audit-field-value mono">${endpoint}</div>
     </div>
-    <div class="bat-row">
-      <span class="bat-lbl">Endpoint</span>
-      <span class="bat-val mono" title="${endpoint}">${endpoint}</span>
+    <div class="audit-field">
+      <div class="audit-field-label">→ REQUEST BODY</div>
+      <pre class="audit-pre" id="auditReqPre">${reqBody}</pre>
     </div>
-    <div class="bat-section">
-      <div class="bat-section-title">→ REQUEST</div>
-      <pre class="bat-pre">${reqBody}</pre>
-    </div>
-    <div class="bat-section">
-      <div class="bat-section-title">← RESPONSE</div>
-      <pre class="bat-pre">${respBody}</pre>
+    <div class="audit-field">
+      <div class="audit-field-label">← RESPONSE BODY</div>
+      <pre class="audit-pre" id="auditRespPre">${respBody}</pre>
     </div>
   `;
 
-  container.classList.remove('hidden');
-  // Auto-hide after 12 seconds
-  setTimeout(() => container.classList.add('hidden'), 12000);
+  // Wire copy button
+  if (copyBtn) {
+    copyBtn.onclick = () => {
+      navigator.clipboard.writeText(JSON.stringify(auditPayload, null, 2))
+        .then(() => {
+          copyBtn.textContent = '✔ Copied!';
+          copyBtn.style.background = '#4cde8033';
+          setTimeout(() => {
+            copyBtn.textContent = '📋 Copy Audit JSON';
+            copyBtn.style.background = '';
+          }, 2000);
+        })
+        .catch(() => {
+          // Fallback for environments without clipboard API
+          const ta = document.createElement('textarea');
+          ta.value = JSON.stringify(auditPayload, null, 2);
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          copyBtn.textContent = '✔ Copied!';
+          setTimeout(() => { copyBtn.textContent = '📋 Copy Audit JSON'; }, 2000);
+        });
+    };
+  }
+
+  // Wire close buttons
+  const closeModal = () => {
+    modal.classList.remove('modal-show');
+    setTimeout(() => modal.classList.add('hidden'), 300);
+  };
+  if (closeBtn)  closeBtn.onclick  = closeModal;
+  if (closeBtn2) closeBtn2.onclick = closeModal;
+  modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+
+  // Show modal
+  modal.classList.remove('hidden');
+  setTimeout(() => modal.classList.add('modal-show'), 10);
 }
 
 window.startGame = function(mode, opponent) {

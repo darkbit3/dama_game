@@ -1871,3 +1871,116 @@ body {
   overflow-y: auto;
   line-height: 1.5;
 }
+
+/* ── Bet Audit Modal ──────────────────────────────────────────────────────── */
+.audit-box {
+  width: 100%;
+  max-width: 460px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  gap: 0;
+}
+
+.audit-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.audit-footer {
+  display: flex;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid rgba(255,255,255,.07);
+  flex-shrink: 0;
+}
+.audit-footer .btn {
+  flex: 1;
+  font-size: .75rem;
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+
+/* Status row */
+.audit-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.audit-status-pill {
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  padding: 4px 12px;
+  border-radius: 99px;
+}
+
+.audit-amount {
+  font-family: 'Cinzel', serif;
+  font-size: 1.4rem;
+  font-weight: 900;
+  color: var(--gold);
+}
+.audit-amount small {
+  font-size: .65rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-left: 3px;
+}
+
+/* Field blocks */
+.audit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.audit-field-label {
+  font-size: .55rem;
+  font-weight: 800;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.audit-field-value {
+  font-size: .72rem;
+  color: var(--cream);
+  word-break: break-all;
+}
+.audit-field-value.mono {
+  font-family: 'Courier New', monospace;
+  font-size: .65rem;
+  color: rgba(240,201,74,.8);
+  background: rgba(0,0,0,.35);
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+
+/* Pre blocks for JSON */
+.audit-pre {
+  background: rgba(0,0,0,.55);
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-family: 'Courier New', monospace;
+  font-size: .62rem;
+  color: rgba(240,201,74,.9);
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  line-height: 1.6;
+  user-select: text;
+}
