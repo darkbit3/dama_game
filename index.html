@@ -345,6 +345,25 @@
     </div>
   </div>
 
+  <!-- BET PLACING LOADING MODAL -->
+  <div id="betPlacingModal" class="modal-overlay hidden">
+    <div class="modal-box" style="max-width: 320px; padding: 25px 20px;">
+      <div class="modal-crown">💸</div>
+      <h2 class="modal-title" id="betPlacingTitle" style="font-size: 1.15rem;">Placing Bet</h2>
+      <p class="modal-sub" id="betPlacingSub" style="font-size: 0.75rem;">Processing transaction with token backend...</p>
+      <div class="loader-dots" style="margin-top: 15px; display: flex; justify-content: center; gap: 8px;">
+        <span style="width: 10px; height: 10px; border-radius: 50%; background: var(--accent);"></span>
+        <span style="width: 10px; height: 10px; border-radius: 50%; background: var(--accent); opacity: 0.6;"></span>
+        <span style="width: 10px; height: 10px; border-radius: 50%; background: var(--accent); opacity: 0.3;"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- BET ACCEPTED TOAST -->
+  <div id="betAcceptedToast" class="bet-accepted-toast">
+    <span>✔</span> <span id="betAcceptedMsg">Bet Accepted!</span>
+  </div>
+
   <!-- DISCONNECTED / KICKED MODAL -->
   <div id="kickedModal" class="modal-overlay hidden">
     <div class="modal-box">

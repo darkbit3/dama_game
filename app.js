@@ -39,11 +39,13 @@ window.resetIdle  = resetIdle;
 window._socketRef = { apiUrl: Socket.apiUrl };
 
 /**
- * sendStartBet — POST /api/games/start-bet and show an in-game audit toast.
+ * sendStartBet — POST /api/games/start-bet synchronously.
+ * Manages the processing loaders, shows floating success banners, and alerts on transaction declines.
  * @param {string} gameId
- * @param {number} betAmount  0 = no-bet game, still logs the row
- * @param {string} mode       'ai' | 'pvp'
+ * @param {number} betAmount
+ * @param {string} mode
  * @param {string|null} player2Id
+ * @returns {Promise<boolean>}  Returns true if bet is successful or skipped, false on refusal.
  */
 async function sendStartBet(gameId, betAmount, mode, player2Id = null) {
   const playerId = window.tgUserId;
@@ -51,7 +53,14 @@ async function sendStartBet(gameId, betAmount, mode, player2Id = null) {
   const apiToken = window.DAMA_API_TOKEN || localStorage.getItem('dama_api_token') || '';
   const apiUrl   = Socket.apiUrl;
 
-  if (!playerId || !phone || !apiUrl) return;
+  if (!playerId || !phone || !apiUrl) return false;
+
+  // Show bet placing modal loader
+  const loader = document.getElementById('betPlacingModal');
+  if (loader) {
+    loader.classList.remove('hidden');
+    setTimeout(() => loader.classList.add('modal-show'), 10);
+  }
 
   try {
     const res = await fetch(`${apiUrl}/games/start-bet`, {
@@ -66,130 +75,48 @@ async function sendStartBet(gameId, betAmount, mode, player2Id = null) {
 
     const json = await res.json();
     const data = json?.data || json;
-    showBetAuditModal(data?.betLog || null, betAmount);
+    const log  = data?.betLog;
+
+    // Dismiss loader
+    if (loader) {
+      loader.classList.remove('modal-show');
+      setTimeout(() => loader.classList.add('hidden'), 300);
+    }
+
+    if (res.ok && (data.skipped || log?.status === 'success')) {
+      // Show simple green accepted toast instead of debugging panel
+      const toast = document.getElementById('betAcceptedToast');
+      const msg   = document.getElementById('betAcceptedMsg');
+      if (toast && msg) {
+        msg.textContent = betAmount > 0 ? `Bet Accepted: ${betAmount.toLocaleString()} ETB!` : 'Match Started!';
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 3000);
+      }
+      return true;
+    } else {
+      // Alert deduction failure
+      const reason = log?.error || data?.error || 'Unspecified integration error';
+      alert(`Transaction Rejected!\nReason: ${reason}`);
+      return false;
+    }
   } catch (err) {
-    showBetAuditModal(null, betAmount, err.message);
+    if (loader) {
+      loader.classList.remove('modal-show');
+      setTimeout(() => loader.classList.add('hidden'), 300);
+    }
+    alert(`Transaction Failed!\nNetwork Error: ${err.message}`);
+    return false;
   }
 }
 
 /**
- * showBetAuditModal — opens the full-screen audit modal with
- * complete request / response JSON and a one-tap copy button.
+ * showBetAuditModal — kept for reference/manual debugging if needed.
  */
 function showBetAuditModal(betLog, betAmount, fetchError = null) {
-  const modal  = document.getElementById('betAuditModal');
-  const body   = document.getElementById('betAuditBody');
-  const copyBtn = document.getElementById('betAuditCopyBtn');
-  const closeBtn = document.getElementById('betAuditClose');
-  const closeBtn2 = document.getElementById('betAuditCloseBtn');
-  if (!modal || !body) return;
-
-  // No bet — don't open
-  if (betAmount <= 0) return;
-
-  const status = fetchError ? 'error'
-    : betLog?.skipped ? 'skipped'
-    : betLog?.status  || 'unknown';
-
-  const statusColor = {
-    success:    '#4cde80',
-    failed:     '#e74c3c',
-    error:      '#e74c3c',
-    no_backend: '#f0c94a',
-    skipped:    '#aaa',
-    unknown:    '#aaa',
-  }[status] || '#aaa';
-
-  const statusLabel = {
-    success:    '✔ Deducted',
-    failed:     '✖ Failed',
-    error:      '✖ Error',
-    no_backend: '⚠ No Backend',
-    skipped:    '– Skipped',
-    unknown:    '? Unknown',
-  }[status] || status;
-
-  const reqBody  = betLog?.requestBody
-    ? JSON.stringify(betLog.requestBody,  null, 2)
-    : '—';
-  const respBody = betLog?.responseBody
-    ? JSON.stringify(betLog.responseBody, null, 2)
-    : (fetchError || betLog?.error || '—');
-  const endpoint = betLog?.backendUrl
-    ? betLog.backendUrl.replace(/\/$/, '') + '/dama'
-    : '—';
-
-  // Build audit payload for copying
-  const auditPayload = {
-    status,
-    amount: betAmount,
-    endpoint,
-    request:  betLog?.requestBody  || null,
-    response: betLog?.responseBody || null,
-    error:    fetchError || betLog?.error || null,
-  };
-
-  // Render body content
-  body.innerHTML = `
-    <div class="audit-status-row">
-      <span class="audit-status-pill" style="background:${statusColor}22;color:${statusColor};border:1px solid ${statusColor}55;">${statusLabel}</span>
-      <span class="audit-amount">${betAmount.toLocaleString()} <small>ETB</small></span>
-    </div>
-    <div class="audit-field">
-      <div class="audit-field-label">🌐 ENDPOINT</div>
-      <div class="audit-field-value mono">${endpoint}</div>
-    </div>
-    <div class="audit-field">
-      <div class="audit-field-label">→ REQUEST BODY</div>
-      <pre class="audit-pre" id="auditReqPre">${reqBody}</pre>
-    </div>
-    <div class="audit-field">
-      <div class="audit-field-label">← RESPONSE BODY</div>
-      <pre class="audit-pre" id="auditRespPre">${respBody}</pre>
-    </div>
-  `;
-
-  // Wire copy button
-  if (copyBtn) {
-    copyBtn.onclick = () => {
-      navigator.clipboard.writeText(JSON.stringify(auditPayload, null, 2))
-        .then(() => {
-          copyBtn.textContent = '✔ Copied!';
-          copyBtn.style.background = '#4cde8033';
-          setTimeout(() => {
-            copyBtn.textContent = '📋 Copy Audit JSON';
-            copyBtn.style.background = '';
-          }, 2000);
-        })
-        .catch(() => {
-          // Fallback for environments without clipboard API
-          const ta = document.createElement('textarea');
-          ta.value = JSON.stringify(auditPayload, null, 2);
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand('copy');
-          document.body.removeChild(ta);
-          copyBtn.textContent = '✔ Copied!';
-          setTimeout(() => { copyBtn.textContent = '📋 Copy Audit JSON'; }, 2000);
-        });
-    };
-  }
-
-  // Wire close buttons
-  const closeModal = () => {
-    modal.classList.remove('modal-show');
-    setTimeout(() => modal.classList.add('hidden'), 300);
-  };
-  if (closeBtn)  closeBtn.onclick  = closeModal;
-  if (closeBtn2) closeBtn2.onclick = closeModal;
-  modal.onclick = (e) => { if (e.target === modal) closeModal(); };
-
-  // Show modal
-  modal.classList.remove('hidden');
-  setTimeout(() => modal.classList.add('modal-show'), 10);
+  // Silent execution now preferred, but kept to prevent reference errors
 }
 
-window.startGame = function(mode, opponent) {
+window.startGame = async function(mode, opponent) {
   const betAmount = parseInt(document.getElementById('betInput')?.value || '0', 10);
 
   // For local/offline games (AI or local PvP), enforce sufficient balance check
@@ -201,9 +128,22 @@ window.startGame = function(mode, opponent) {
     }
   }
 
+  // Enforce synchronous bet deduction check before allowing local gameplay
+  if (betAmount > 0 && (mode === 'ai' || (mode === 'pvp' && !window.activeOnlineGame))) {
+    const ts   = Date.now().toString(36).toUpperCase();
+    const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+    const tempId = (mode === 'ai' ? 'AI' : 'LOC') + '-' + ts + '-' + rand;
+
+    const betPlaced = await sendStartBet(tempId, betAmount, mode, opponent?.id || null);
+    if (!betPlaced) {
+      // Balance deduction failed — abort match entirely
+      return;
+    }
+    // Transaction logged, start match with same pre-generated gameId
+    window._tempGameId = tempId;
+  }
+
   startGame(mode, opponent);
-  // Fire-and-forget bet registration/deduction
-  sendStartBet(G.gameId, betAmount, mode, opponent?.id || null);
 };
 
 window.startGameVsPlayer = function(opponent) {

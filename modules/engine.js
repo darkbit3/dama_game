@@ -1395,10 +1395,15 @@ export function startGame(mode, opponentOrNull) {
       G.captured[WHITE] = 12 - blackPieces;
     }
   } else {
-    // AI / local PvP — generate a display-only local game ID
-    const ts   = Date.now().toString(36).toUpperCase();
-    const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
-    G.gameId   = (mode === 'ai' ? 'AI' : 'LOC') + '-' + ts + '-' + rand;
+    // AI / local PvP — check if ID was pre-generated for bet verification
+    if (window._tempGameId) {
+      G.gameId = window._tempGameId;
+      window._tempGameId = null; // consume it
+    } else {
+      const ts   = Date.now().toString(36).toUpperCase();
+      const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+      G.gameId   = (mode === 'ai' ? 'AI' : 'LOC') + '-' + ts + '-' + rand;
+    }
   }
 
   // Load AI config from localStorage (set by admin dashboard)
