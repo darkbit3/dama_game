@@ -106,7 +106,27 @@ initLoader(() => {
       if (window.playerReady && window.currentBet > 0) renderPlayerList();
     }, 8000);
 
-    // Update balance display — prefer window.DAMA_BALANCE (from owner backend)
+    // ── Balance auto-refresh every 10s (silent, no spinner) ──────────────
+    const _isOnMenu = () =>
+      document.getElementById('gameScreen')?.classList.contains('hidden') !== false;
+
+    setInterval(async () => {
+      if (_isOnMenu()) await refreshBalance(true).catch(() => {});
+    }, 10000);
+
+    // ── Refresh immediately when tab/app comes back to foreground ─────────
+    // Covers: switching back from another app, closing & reopening the tab,
+    // Telegram mini-app going to background then returning.
+    document.addEventListener('visibilitychange', async () => {
+      if (document.visibilityState === 'visible' && _isOnMenu()) {
+        await refreshBalance(true).catch(() => {});
+      }
+    });
+    window.addEventListener('focus', async () => {
+      if (_isOnMenu()) await refreshBalance(true).catch(() => {});
+    });
+
+    // ── First render: show the balance fetched at page-load time ──────────
     const balEl = document.getElementById('myBalance');
     if (balEl) {
       const me = PlayerRegistry.load().find(p => p.id === window.tgUserId);
@@ -115,6 +135,7 @@ initLoader(() => {
     }
 
     renderPlayerList();
+
   });
 
   initParticles();
@@ -147,10 +168,10 @@ function initApp() {
     }
   });
 
-  // ── Balance refresh button ───────────────────────────────────
-  document.getElementById('balRefreshBtn')?.addEventListener('click', () => {
+  // ── Balance refresh button (manual, shows spinner) ──────────────
+  document.getElementById('balRefreshBtn')?.addEventListener('click', async () => {
     tgHaptic('light');
-    refreshBalance();
+    await refreshBalance(false);   // false = show spinner for user feedback
   });
 
   // ── How to Play ──────────────────────────────────────────────

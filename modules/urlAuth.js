@@ -191,18 +191,19 @@ async function fetchRealBalance(token, phone) {
 }
 
 /**
- * refreshBalance() — fetch fresh balance from owner backend and update display.
+ * refreshBalance(silent) — fetch fresh balance from owner backend and update display.
  * Exported so it can be called from anywhere.
+ * Pass silent=true to suppress the loading spinner (used for background polling).
  */
-export async function refreshBalance() {
+export async function refreshBalance(silent = false) {
   const auth = (() => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { return null; }
   })();
   if (!auth?.token || !auth?.phone) return;
 
-  setBalanceLoading(true);
+  if (!silent) setBalanceLoading(true);
   const data = await fetchRealBalance(auth.token, auth.phone);
-  if (data && data.balance !== null) {
+  if (data && data.balance !== null && data.balance !== undefined) {
     updateBalanceDisplay(data.balance);
     if (data.username) {
       window.DAMA_USERNAME = data.username;
@@ -211,7 +212,7 @@ export async function refreshBalance() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(auth));
     }
   }
-  setBalanceLoading(false);
+  if (!silent) setBalanceLoading(false);
 }
 
 /**
