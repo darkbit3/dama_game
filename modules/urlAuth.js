@@ -168,41 +168,113 @@ function setBalanceLoading(loading) {
 }
 
 /**
- * Ask Dama backend to fetch real balance and username from the token owner's /dama endpoint.
- * Sends: token + phone (player identifier).
- * Returns: { balance: number, username: string } or null on failure.
+ * Ask Dama backend to get the partner integration backend URL.
  */
-async function fetchRealBalance(token, phone) {
+async function fetchBackendUrl(token) {
   try {
     const { apiUrl } = await import('./socket.js');
-    const res = await fetch(`${apiUrl}/player-balance`, {
+    const res = await fetch(`${apiUrl}/token-backend-url`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Token': token,
-      },
-      body: JSON.stringify({ token, phone }),
-      signal: AbortSignal.timeout(8000),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return null;
     const json = await res.json();
-    const data = json?.data || json;
-    if (!data) return null;
-
-    return {
-      balance: data.balance !== null && data.balance !== undefined ? Number(data.balance) : null,
-      username: data.username || null,
-    };
+    return json?.data?.backendUrl || null;
   } catch (err) {
-    console.error('fetchRealBalance error:', err);
+    console.error('fetchBackendUrl error:', err);
     return null;
   }
 }
 
 /**
- * refreshBalance(silent) — fetch fresh balance from owner backend and update display.
- * Exported so it can be called from anywhere.
- * Pass silent=true to suppress the loading spinner (used for background polling).
+ * Fetch real balance directly from the partner integration's backendUrl/dama endpoint.
+ */
+async function fetchRealBalanceDirect(backendUrl, phone, username) {
+  try {
+    const checkUrl = backendUrl.replace(/\/$/, '') + '/dama';
+    const res = await fetch(checkUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'get_balance',
+        phone: normalizePhone(phone),
+        username: username || 'Player',
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return {
+      balance: data.balance !== null && data.balance !== undefined ? Number(data.balance) : null,
+      username: data.username || null,
+    };
+  } catch (err) {
+    console.error('fetchRealBalanceDirect error:', err);
+    return null;
+  }
+}
+
+/**
+ * Inject a fullscreen blocker if connection to partner backend fails.
+ */
+function showOfflineOverlay(backendUrl) {
+  if (document.getElementById('backendConnBlock')) return;
+  document.body.style.overflow = 'hidden';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'backendConnBlock';
+  overlay.style.cssText = [
+    'position:fixed', 'inset:0', 'z-index:99999',
+    'background:radial-gradient(ellipse at center,#1e0000 0%,#0d0d0d 70%)',
+    'display:flex', 'flex-direction:column',
+    'align-items:center', 'justify-content:center',
+    'gap:18px', 'padding:32px 24px', 'text-align:center',
+  ].join(';');
+
+  overlay.innerHTML = `
+    <div style="font-size:3.6rem;line-height:1;margin-bottom:8px;">⚠️</div>
+    <div style="
+      font-family:'Cinzel',serif;
+      font-size:1.4rem;font-weight:900;
+      color:#e74c3c;
+    ">Connection Offline</div>
+    <div style="
+      color:rgba(245,230,200,.7);font-size:.9rem;
+      max-width:320px;line-height:1.65;
+    ">
+      The partner integration backend server at:<br>
+      <code style="background:rgba(0,0,0,.4);padding:4px 8px;border-radius:6px;font-size:.8rem;word-break:break-all;display:block;margin-top:8px;color:#f0c94a;">${backendUrl || 'Unknown Integration'}</code><br>
+      is currently offline or unreachable. We cannot retrieve your account details.
+    </div>
+    <button id="connRetryBtn" style="
+      background:#d4a017;color:#000;border:none;
+      border-radius:8px;padding:12px 24px;font-weight:700;
+      cursor:pointer;margin-top:12px;font-family:inherit;
+      box-shadow:0 4px 14px rgba(212,160,23,.3);
+    ">↻ Try Again</button>
+  `;
+
+  const mount = () => {
+    const loader = document.getElementById('loader');
+    if (loader) loader.style.display = 'none';
+    document.body.appendChild(overlay);
+
+    document.getElementById('connRetryBtn').addEventListener('click', () => {
+      window.location.reload();
+    });
+  };
+
+  if (document.body) {
+    mount();
+  } else {
+    document.addEventListener('DOMContentLoaded', mount);
+  }
+}
+
+/**
+ * refreshBalance(silent) — fetch fresh balance directly from owner backend.
  */
 export async function refreshBalance(silent = false) {
   const auth = (() => {
@@ -210,8 +282,11 @@ export async function refreshBalance(silent = false) {
   })();
   if (!auth?.token || !auth?.phone) return;
 
+  const backendUrl = localStorage.getItem('dama_integration_backend_url');
+  if (!backendUrl) return;
+
   if (!silent) setBalanceLoading(true);
-  const data = await fetchRealBalance(auth.token, auth.phone);
+  const data = await fetchRealBalanceDirect(backendUrl, auth.phone, auth.username);
   if (data && data.balance !== null && data.balance !== undefined) {
     updateBalanceDisplay(data.balance);
     if (data.username) {
@@ -220,6 +295,8 @@ export async function refreshBalance(silent = false) {
       auth.balance = data.balance.toString();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(auth));
     }
+  } else if (!silent) {
+    showOfflineOverlay(backendUrl);
   }
   if (!silent) setBalanceLoading(false);
 }
@@ -253,9 +330,28 @@ export function initUrlAuth() {
 
       // Show spinner while fetching real balance
       setBalanceLoading(true);
-      fetchRealBalance(params.token, params.phone).then(data => {
-        setBalanceLoading(false);
-        if (data) {
+
+      // Step 1: Request backend to get the backendUrl of that token
+      fetchBackendUrl(params.token).then(backendUrl => {
+        if (!backendUrl) {
+          setBalanceLoading(false);
+          showOfflineOverlay('Dama Token Authorization API');
+          return;
+        }
+
+        // Cache the partner's backend URL
+        localStorage.setItem('dama_integration_backend_url', backendUrl);
+
+        // Step 2: Request the partner backend directly to get username and balance
+        fetchRealBalanceDirect(backendUrl, params.phone, params.username).then(data => {
+          setBalanceLoading(false);
+          if (!data) {
+            // Step 3: Show connection offline overlay if partner URL fails
+            showOfflineOverlay(backendUrl);
+            return;
+          }
+
+          // Step 4: If successful, update details, local storage, and the page UI
           if (data.balance !== null && data.balance !== undefined) {
             updateBalanceDisplay(data.balance);
             params.balance = data.balance.toString();
@@ -267,7 +363,7 @@ export function initUrlAuth() {
             if (nameEl) nameEl.textContent = data.username;
           }
 
-          // Auto-change the balance/username query parameters in the browser URL
+          // Step 5: Update the URL query params in browser history
           try {
             const url = new URL(window.location.href);
             if (data.balance !== null) url.searchParams.set('balance', data.balance.toString());
@@ -279,8 +375,8 @@ export function initUrlAuth() {
 
           // Save updated params to localStorage
           localStorage.setItem(STORAGE_KEY, JSON.stringify(params));
-        }
-        resolve(params);
+          resolve(params);
+        });
       });
     } else {
       // Find which params are missing
