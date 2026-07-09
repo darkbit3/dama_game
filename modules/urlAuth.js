@@ -8,6 +8,15 @@
 const REQUIRED_PARAMS = ['token', 'phone'];
 const STORAGE_KEY     = 'dama_url_auth';
 
+function normalizePhone(phone) {
+  if (!phone) return null;
+  const clean = String(phone).replace(/\D/g, '');
+  if (clean.length >= 9) {
+    return '251' + clean.slice(-9);
+  }
+  return clean;
+}
+
 /**
  * Read params from the current URL.
  * Returns an object with the four values, or null for missing ones.
@@ -16,7 +25,7 @@ function readParams() {
   const p = new URLSearchParams(window.location.search);
   return {
     token:    p.get('token')    || null,
-    phone:    p.get('phone')    || null,
+    phone:    normalizePhone(p.get('phone')),
     username: p.get('username') || null,
     balance:  p.get('balance')  || null,
   };
