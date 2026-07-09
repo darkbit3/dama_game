@@ -239,7 +239,43 @@ function recordResult(playerId, result) {
 function getAll()    { return load(); }
 function getOthers() { return load().filter(p => p.id !== window.tgUserId); }
 
-export const PlayerRegistry = { register, recordResult, getAll, getOthers, load, save, fetchPlayers, setReadyOnBackend, clearReadyOnBackend, fetchReadyPlayers };
+async function fetchCurrentPlayer(playerId) {
+  if (!playerId) return null;
+  try {
+    const res = await fetchWithToken(`${apiUrl}/players/${playerId}`);
+    if (res.ok) {
+      const respObj = await res.json();
+      const dbPlayer = respObj.data;
+      if (dbPlayer) {
+        const list = load();
+        const idx = list.findIndex(p => p.id === playerId);
+        if (idx !== -1) {
+          list[idx] = {
+            ...list[idx],
+            wins:       dbPlayer.wins,
+            losses:     dbPlayer.losses,
+            draws:      dbPlayer.draws,
+            balance:    list[idx].isMe
+              ? (window.DAMA_BALANCE ?? list[idx].balance ?? dbPlayer.balance)
+              : dbPlayer.balance,
+            lastIp:     dbPlayer.last_ip,
+            lastDevice: dbPlayer.last_device,
+          };
+          save(list);
+          if (typeof window.renderPlayerList === 'function') {
+            window.renderPlayerList();
+          }
+        }
+      }
+      return dbPlayer;
+    }
+  } catch (err) {
+    console.error('Failed to fetch current player details:', err);
+  }
+  return null;
+}
+
+export const PlayerRegistry = { register, recordResult, getAll, getOthers, load, save, fetchPlayers, fetchCurrentPlayer, setReadyOnBackend, clearReadyOnBackend, fetchReadyPlayers };
 
 export function seedDemoPlayers() {
   // Let the backend seed players since the backend has the actual persistent state

@@ -90,6 +90,9 @@ initLoader(() => {
       pieceThemeId: savedTheme.id,
     });
 
+    // Immediately fetch fresh profile details & stats from database
+    PlayerRegistry.fetchCurrentPlayer(window.tgUserId);
+
     // Connect WebSocket
     Socket.connect(window.tgUserId);
 
@@ -100,7 +103,10 @@ initLoader(() => {
 
     // Initial fetch of player list and setup periodic refresh
     PlayerRegistry.fetchPlayers();
-    setInterval(() => PlayerRegistry.fetchPlayers(), 10000);
+    setInterval(() => {
+      PlayerRegistry.fetchPlayers();
+      PlayerRegistry.fetchCurrentPlayer(window.tgUserId);
+    }, 10000);
     // Refresh ready player list every 8 seconds
     setInterval(() => {
       if (window.playerReady && window.currentBet > 0) renderPlayerList();
