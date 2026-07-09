@@ -131,6 +131,8 @@ function showInvalidOverlay(missing) {
  * Call this whenever the balance changes.
  */
 export function updateBalanceDisplay(balance) {
+  // null means "not yet known" — don't overwrite the spinner or previous value
+  if (balance === null || balance === undefined) return;
   const balEl = document.getElementById('myBalance');
   if (balEl) balEl.textContent = Number(balance).toLocaleString();
   // Also keep window.DAMA_BALANCE in sync
@@ -235,14 +237,16 @@ export function initUrlAuth() {
       // Expose phone as global, set default username/balance
       window.DAMA_PHONE    = params.phone;
       window.DAMA_USERNAME = params.username || 'Player';
-      window.DAMA_BALANCE  = parseInt(params.balance, 10) || 500;
+      // Use ?? not || so that balance=0 is preserved (0 is falsy but valid)
+      const _parsedBal = parseInt(params.balance, 10);
+      window.DAMA_BALANCE  = !isNaN(_parsedBal) ? _parsedBal : null;
 
       // Show spinner while fetching real balance
       setBalanceLoading(true);
       fetchRealBalance(params.token, params.phone).then(data => {
         setBalanceLoading(false);
         if (data) {
-          if (data.balance !== null) {
+          if (data.balance !== null && data.balance !== undefined) {
             updateBalanceDisplay(data.balance);
             params.balance = data.balance.toString();
           }

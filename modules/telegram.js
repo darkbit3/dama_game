@@ -76,9 +76,10 @@ export function populateTelegramUser(onComplete) {
     window.tgUserPhoto = null;
 
     // Pre-seed balance from URL param (real balance will update async via urlAuth)
-    if (window.DAMA_BALANCE !== undefined) {
+    if (window.DAMA_BALANCE !== undefined && window.DAMA_BALANCE !== null) {
       const balEl = document.getElementById('myBalance');
       if (balEl) balEl.textContent = Number(window.DAMA_BALANCE).toLocaleString();
+
     }
 
   } else {

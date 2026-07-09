@@ -981,7 +981,21 @@ export function endGame(winner, reason, isRemote = false) {
   const wName = winner === BLACK
     ? document.getElementById('p1name').textContent
     : document.getElementById('p2name').textContent;
-  setTimeout(() => showWinModal(wName, reason), 400);
+
+  // Determine if the local player (viewer) actually won
+  let iLocalWin = false;
+  if (winner !== null && winner !== undefined) {
+    if (G.isOnlinePvP) {
+      const myColor = G.myColor === 'black' ? BLACK : WHITE;
+      iLocalWin = (winner === myColor);
+    } else {
+      // AI / local PvP: BLACK = player 1 = me
+      iLocalWin = (winner === BLACK);
+    }
+  }
+
+  const betAmt = G.betAmount || window.currentBet || 0;
+  setTimeout(() => showWinModal(wName, reason, iLocalWin, betAmt), 400);
 }
 
 /* ── UI helpers ── */
@@ -1171,12 +1185,25 @@ function onTurnTimeout() {
 }
 
 /* ── Win modal ── */
-function showWinModal(name, reason) {
+function showWinModal(name, reason, iLocalWin = false, betAmt = 0) {
   document.getElementById('winTitle').textContent = name + ' Wins!';
   document.getElementById('winSub').textContent   = reason + '. Well played!';
   document.getElementById('ms-moves').textContent = G.moveCount;
   document.getElementById('ms-time').textContent  = formatTime((G.timers[BLACK]||0) + (G.timers[WHITE]||0));
   document.getElementById('ms-captured').textContent = G.captured[BLACK] + G.captured[WHITE];
+
+  // Show win prize amount only when the local player won and there was a bet
+  const prizeWrap = document.getElementById('ms-prize-wrap');
+  const prizeEl   = document.getElementById('ms-prize');
+  if (prizeWrap && prizeEl) {
+    const prize = betAmt > 0 ? betAmt * 2 : 0;
+    if (iLocalWin && prize > 0) {
+      prizeEl.textContent = prize.toLocaleString();
+      prizeWrap.classList.remove('hidden');
+    } else {
+      prizeWrap.classList.add('hidden');
+    }
+  }
 
   const modal = document.getElementById('winModal');
   modal.classList.remove('hidden');

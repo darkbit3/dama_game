@@ -38,7 +38,7 @@ function register(player) {
     wins:         0,
     losses:       0,
     draws:        0,
-    balance:      window.DAMA_BALANCE || player.balance || 500,
+    balance:      window.DAMA_BALANCE ?? player.balance ?? 500,
     bet:          player.bet || 100,
     pieceThemeId: player.pieceThemeId || randomThemeId(),
     lastSeen:     Date.now(),

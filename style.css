@@ -1249,6 +1249,51 @@ body {
 .modal-actions { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; width:100%; }
 .modal-actions .btn { flex:1; min-width:120px; }
 
+/* ── Win Prize Banner ── */
+.ms-prize-wrap {
+  width:100%;
+  margin:4px 0 8px;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:4px;
+  background:linear-gradient(135deg,rgba(212,160,23,.18) 0%,rgba(240,201,74,.28) 50%,rgba(212,160,23,.18) 100%);
+  border:1.5px solid rgba(240,201,74,.55);
+  border-radius:14px;
+  padding:12px 20px;
+  box-shadow:0 0 22px rgba(240,201,74,.25), inset 0 1px 0 rgba(255,255,255,.08);
+  animation:prizeSlideIn .45s cubic-bezier(.34,1.56,.64,1) both;
+}
+.ms-prize-label {
+  font-size:.7rem;
+  letter-spacing:.12em;
+  text-transform:uppercase;
+  color:rgba(240,201,74,.75);
+  font-weight:600;
+}
+.ms-prize-amount {
+  font-family:'Cinzel',serif;
+  font-size:1.85rem;
+  font-weight:900;
+  background:linear-gradient(180deg,#fff 0%,#f0c94a 55%,#d4a017 100%);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  background-clip:text;
+  letter-spacing:.04em;
+  line-height:1.1;
+  animation:prizePulse 1.4s ease-in-out infinite;
+}
+@keyframes prizeSlideIn {
+  from { opacity:0; transform:translateY(14px) scale(.92); }
+  to   { opacity:1; transform:translateY(0) scale(1); }
+}
+@keyframes prizePulse {
+  0%,100% { filter:drop-shadow(0 0 6px rgba(240,201,74,.5)); }
+  50%      { filter:drop-shadow(0 0 18px rgba(240,201,74,.9)); }
+}
+
+
+
 /* AI Bot Selector Styles */
 .ai-bot-list {
   width: 100%;
