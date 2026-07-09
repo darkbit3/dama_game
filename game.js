@@ -40,13 +40,13 @@ function initGamePage() {
 
   document.getElementById('restartBtn')?.addEventListener('click', () => {
     if (G.isOnlinePvP) return; // can't restart an online game
-    startGame(G.mode, G.opponent);
+    window.startGame(G.mode, G.opponent);
   });
 
   document.getElementById('undoBtn')?.addEventListener('click', doUndo);
 
   document.getElementById('playAgainBtn')?.addEventListener('click', () => {
-    startGame(G.mode, G.opponent);
+    window.startGame(G.mode, G.opponent);
   });
 
   document.getElementById('menuBtn2')?.addEventListener('click', () => {

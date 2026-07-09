@@ -38,8 +38,123 @@ window.resetIdle  = resetIdle;
 // Expose socket apiUrl for engine.js finish-local calls
 window._socketRef = { apiUrl: Socket.apiUrl };
 
+/**
+ * sendStartBet — POST /api/games/start-bet and show an in-game audit toast.
+ * @param {string} gameId
+ * @param {number} betAmount  0 = no-bet game, still logs the row
+ * @param {string} mode       'ai' | 'pvp'
+ * @param {string|null} player2Id
+ */
+async function sendStartBet(gameId, betAmount, mode, player2Id = null) {
+  const playerId = window.tgUserId;
+  const phone    = window.DAMA_PHONE;
+  const apiToken = window.DAMA_API_TOKEN || localStorage.getItem('dama_api_token') || '';
+  const apiUrl   = Socket.apiUrl;
+
+  if (!playerId || !phone || !apiUrl) return;
+
+  try {
+    const res = await fetch(`${apiUrl}/games/start-bet`, {
+      method:  'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Token':  apiToken,
+      },
+      body: JSON.stringify({ gameId, playerId, phone, betAmount, mode, player2Id }),
+      signal: AbortSignal.timeout(8000),
+    });
+
+    const json = await res.json();
+    const data = json?.data || json;
+    showBetAuditToast(data?.betLog || null, betAmount);
+  } catch (err) {
+    showBetAuditToast(null, betAmount, err.message);
+  }
+}
+
+/**
+ * showBetAuditToast — renders request/response details inside the game screen.
+ */
+function showBetAuditToast(betLog, betAmount, fetchError = null) {
+  const container = document.getElementById('betAuditToast');
+  if (!container) return;
+
+  // No bet — hide silently
+  if (betAmount <= 0) {
+    container.classList.add('hidden');
+    return;
+  }
+
+  const status = fetchError ? 'error'
+    : betLog?.skipped ? 'skipped'
+    : betLog?.status  || 'unknown';
+
+  const statusColor = {
+    success:    '#4cde80',
+    failed:     '#e74c3c',
+    error:      '#e74c3c',
+    no_backend: '#f0c94a',
+    skipped:    '#999',
+    unknown:    '#999',
+  }[status] || '#999';
+
+  const statusLabel = {
+    success:    '✔ Deducted',
+    failed:     '✖ Failed',
+    error:      '✖ Error',
+    no_backend: '⚠ No Backend',
+    skipped:    '– Skipped',
+    unknown:    '? Unknown',
+  }[status] || status;
+
+  const reqBody  = betLog?.requestBody  ? JSON.stringify(betLog.requestBody,  null, 2) : '—';
+  const respBody = betLog?.responseBody ? JSON.stringify(betLog.responseBody, null, 2) : (fetchError || betLog?.error || '—');
+  const endpoint = betLog?.backendUrl ? betLog.backendUrl.replace(/\/$/, '') + '/dama' : '—';
+
+  container.innerHTML = `
+    <div class="bat-header">
+      <span class="bat-title">💸 Bet Deduction</span>
+      <span class="bat-status" style="color:${statusColor};">${statusLabel}</span>
+      <button class="bat-close" onclick="document.getElementById('betAuditToast').classList.add('hidden')">✕</button>
+    </div>
+    <div class="bat-row">
+      <span class="bat-lbl">Amount</span>
+      <span class="bat-val gold">${betAmount.toLocaleString()} ETB</span>
+    </div>
+    <div class="bat-row">
+      <span class="bat-lbl">Endpoint</span>
+      <span class="bat-val mono" title="${endpoint}">${endpoint}</span>
+    </div>
+    <div class="bat-section">
+      <div class="bat-section-title">→ REQUEST</div>
+      <pre class="bat-pre">${reqBody}</pre>
+    </div>
+    <div class="bat-section">
+      <div class="bat-section-title">← RESPONSE</div>
+      <pre class="bat-pre">${respBody}</pre>
+    </div>
+  `;
+
+  container.classList.remove('hidden');
+  // Auto-hide after 12 seconds
+  setTimeout(() => container.classList.add('hidden'), 12000);
+}
+
 window.startGame = function(mode, opponent) {
+  const betAmount = parseInt(document.getElementById('betInput')?.value || '0', 10);
+
+  // For local/offline games (AI or local PvP), enforce sufficient balance check
+  if (mode === 'ai' || (mode === 'pvp' && !window.activeOnlineGame)) {
+    const me = PlayerRegistry.load().find(p => p.isMe);
+    if (me && me.balance < betAmount) {
+      alert(`Insufficient balance! You only have ${me.balance} ETB.`);
+      return;
+    }
+  }
+
   startGame(mode, opponent);
+  // Fire-and-forget bet registration/deduction
+  sendStartBet(G.gameId, betAmount, mode, opponent?.id || null);
 };
 
 window.startGameVsPlayer = function(opponent) {
@@ -69,6 +184,7 @@ window.startGameVsPlayer = function(opponent) {
   } else {
     window._opponent = opponent;
     startGame('pvp', opponent);
+    sendStartBet(G.gameId, 0, 'pvp', opponent?.id || null);
   }
 };
 
@@ -514,7 +630,7 @@ function renderBotsList(bots, container, modal) {
       modal.classList.remove('modal-show');
       setTimeout(() => modal.classList.add('hidden'), 300);
       // Pass bot with aiPct so engine.js picks up the right difficulty
-      startGame('ai', { ...bot, aiPct: pct });
+      window.startGame('ai', { ...bot, aiPct: pct });
     });
 
     container.appendChild(row);

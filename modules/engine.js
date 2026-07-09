@@ -1394,6 +1394,11 @@ export function startGame(mode, opponentOrNull) {
       G.captured[BLACK] = 12 - whitePieces;
       G.captured[WHITE] = 12 - blackPieces;
     }
+  } else {
+    // AI / local PvP — generate a display-only local game ID
+    const ts   = Date.now().toString(36).toUpperCase();
+    const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+    G.gameId   = (mode === 'ai' ? 'AI' : 'LOC') + '-' + ts + '-' + rand;
   }
 
   // Load AI config from localStorage (set by admin dashboard)
@@ -1484,6 +1489,16 @@ export function startGame(mode, opponentOrNull) {
 
   // Switch to game screen
   showScreen('gameScreen');
+
+  // ── Show Game ID badge ───────────────────────────────────────────────────
+  const gameIdBadge = document.getElementById('gameIdBadge');
+  const gameIdValue = document.getElementById('gameIdValue');
+  if (gameIdBadge && gameIdValue && G.gameId) {
+    gameIdValue.textContent = G.gameId;
+    gameIdBadge.classList.remove('hidden');
+  } else if (gameIdBadge) {
+    gameIdBadge.classList.add('hidden');
+  }
 
   // Apply MY piece colour to BLACK (player 1)
   if (typeof applyPieceTheme === 'function' && window.pieceTheme) applyPieceTheme(window.pieceTheme);

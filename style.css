@@ -678,6 +678,7 @@ body {
   padding-top: var(--safe-top);
   padding-bottom: var(--safe-bottom);
   overflow: hidden;
+  position: relative;
 }
 
 /* ── Game Header ────────────────────────────────── */
@@ -715,6 +716,47 @@ body {
   cursor:pointer; transition:var(--transition); touch-action:manipulation;
 }
 .gh-btn:active { background:rgba(212,160,23,.2); color:var(--gold); }
+
+/* ── Game ID badge ─────────────────────────────────── */
+.game-id-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 5px 14px;
+  background: rgba(0,0,0,.55);
+  border-bottom: 1px solid rgba(212,160,23,.12);
+  flex-shrink: 0;
+  animation: fadeInDown .3s ease both;
+}
+.game-id-badge.hidden { display: none !important; }
+
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.gib-label {
+  font-size: .5rem;
+  font-weight: 800;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.gib-value {
+  font-family: 'Courier New', monospace;
+  font-size: .68rem;
+  font-weight: 700;
+  color: var(--gold-light);
+  letter-spacing: .06em;
+  background: rgba(212,160,23,.08);
+  border: 1px solid rgba(212,160,23,.2);
+  border-radius: 6px;
+  padding: 1px 8px;
+  user-select: all;
+}
 
 /* ── Score Strip (replaces side panels) ────────── */
 .score-strip {
@@ -1674,3 +1716,158 @@ body {
 .hist-bet   { font-size: .82rem; font-weight: 700; color: var(--gold); }
 .hist-bet.win-amount  { color: #4cde80; }
 .hist-bet.loss-amount { color: #e74c3c; }
+
+/* ── Game ID badge ──────────────────────────────────────────────────────── */
+.game-id-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 5px 14px;
+  background: rgba(0,0,0,.55);
+  border-bottom: 1px solid rgba(212,160,23,.12);
+  flex-shrink: 0;
+  animation: gidFadeDown .3s ease both;
+}
+.game-id-badge.hidden { display: none !important; }
+
+@keyframes gidFadeDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.gib-label {
+  font-size: .5rem;
+  font-weight: 800;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.gib-value {
+  font-family: 'Courier New', monospace;
+  font-size: .68rem;
+  font-weight: 700;
+  color: var(--gold-light, #f0c94a);
+  letter-spacing: .06em;
+  background: rgba(212,160,23,.08);
+  border: 1px solid rgba(212,160,23,.2);
+  border-radius: 6px;
+  padding: 1px 8px;
+  user-select: all;
+}
+
+/* ── Bet Audit Toast ────────────────────────────────────────────────────── */
+.bet-audit-toast {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  z-index: 500;
+  background: rgba(13,13,13,.97);
+  border-bottom: 1px solid rgba(212,160,23,.25);
+  backdrop-filter: blur(10px);
+  padding: 10px 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: .72rem;
+  animation: batSlideDown .3s ease both;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+.bet-audit-toast.hidden { display: none !important; }
+
+@keyframes batSlideDown {
+  from { opacity: 0; transform: translateY(-10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.bat-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid rgba(255,255,255,.07);
+  padding-bottom: 7px;
+}
+
+.bat-title {
+  font-family: 'Cinzel', serif;
+  font-size: .75rem;
+  font-weight: 700;
+  color: var(--gold-light, #f0c94a);
+  flex: 1;
+}
+
+.bat-status {
+  font-size: .65rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.bat-close {
+  background: rgba(255,255,255,.08);
+  border: none;
+  color: var(--text-muted, #999);
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: .65rem;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: background .15s;
+}
+.bat-close:hover { background: rgba(255,255,255,.18); color: #fff; }
+
+.bat-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.bat-lbl {
+  font-size: .58rem;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--text-muted, #999);
+  min-width: 60px;
+  flex-shrink: 0;
+}
+
+.bat-val {
+  font-size: .7rem;
+  color: var(--cream, #f5f5f5);
+  word-break: break-all;
+}
+.bat-val.gold { color: var(--gold, #d4a017); font-weight: 700; }
+.bat-val.mono { font-family: 'Courier New', monospace; font-size: .62rem; color: rgba(240,201,74,.75); }
+
+.bat-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bat-section-title {
+  font-size: .55rem;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-muted, #999);
+}
+
+.bat-pre {
+  background: rgba(0,0,0,.5);
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: 'Courier New', monospace;
+  font-size: .58rem;
+  color: rgba(240,201,74,.85);
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+  max-height: 100px;
+  overflow-y: auto;
+  line-height: 1.5;
+}
