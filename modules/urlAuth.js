@@ -1,30 +1,23 @@
 /* ═══════════════════════════════════════════════════
    MODULE: urlAuth.js
-   Reads required URL params: token + phone
+   Reads required URL params: token + launch (opaque)
    Fetches balance/username from dama-backend's
-   /api/player-balance — never calls system-backend
-   directly from the browser.
+   POST /api/player-balance — no decryption, no phone
+   ever in the URL or in client-side logic.
 ═══════════════════════════════════════════════════ */
 
-const REQUIRED_PARAMS = ['token', 'phone'];
+const REQUIRED_PARAMS = ['token', 'launch'];
 const STORAGE_KEY     = 'dama_url_auth';
 
-function normalizePhone(phone) {
-  if (!phone) return null;
-  const clean = String(phone).replace(/\D/g, '');
-  if (clean.length >= 9) return '251' + clean.slice(-9);
-  return clean;
-}
-
 /**
- * Read token + phone from the current URL.
- * username and balance are no longer required in the URL.
+ * Read token + launch from the current URL.
+ * No phone, username, or balance is ever expected in the URL.
  */
 function readParams() {
   const p = new URLSearchParams(window.location.search);
   return {
-    token: p.get('token') || null,
-    phone: normalizePhone(p.get('phone')),
+    token:  p.get('token')  || null,
+    launch: p.get('launch') || null,
   };
 }
 
@@ -58,9 +51,9 @@ function showInvalidOverlay(missing) {
         from { opacity:0;transform:translateY(14px); }
         to   { opacity:1;transform:translateY(0); }
       }
-      #urlAuthBlock .lock-icon  { animation:lockBounce .55s ease both; }
-      #urlAuthBlock .auth-title { animation:fadeUp .4s .25s ease both;opacity:0; }
-      #urlAuthBlock .auth-desc  { animation:fadeUp .4s .38s ease both;opacity:0; }
+      #urlAuthBlock .lock-icon   { animation:lockBounce .55s ease both; }
+      #urlAuthBlock .auth-title  { animation:fadeUp .4s .25s ease both;opacity:0; }
+      #urlAuthBlock .auth-desc   { animation:fadeUp .4s .38s ease both;opacity:0; }
       #urlAuthBlock .auth-missing{ animation:fadeUp .4s .48s ease both;opacity:0; }
       #urlAuthBlock .auth-format { animation:fadeUp .4s .55s ease both;opacity:0; }
     </style>
@@ -89,7 +82,7 @@ function showInvalidOverlay(missing) {
       max-width:340px;line-height:1.7;text-align:left;">
       <span style="color:rgba(255,255,255,.4);font-family:sans-serif;font-size:.68rem;">Required URL format:</span><br>
       <span style="color:#f0c94a;">?token=</span><span style="color:#fff;">YOUR_TOKEN</span>
-      <span style="color:#f0c94a;">&amp;phone=</span><span style="color:#fff;">0912345678</span>
+      <span style="color:#f0c94a;">&amp;launch=</span><span style="color:#fff;">LAUNCH_PAYLOAD</span>
     </div>`;
 
   const mount = () => {
@@ -165,21 +158,20 @@ function setBalanceLoading(loading) {
   if (btn) { btn.classList.toggle('spinning', loading); btn.disabled = loading; }
 }
 
-/* ── Single helper: call dama-backend /player-balance ─────────── */
-async function fetchPlayerBalance(token, phone) {
+/* ── Single call to dama-backend /player-balance ─────────────── */
+async function fetchPlayerBalance(token, launch) {
   const { apiUrl } = await import('./socket.js');
   const res = await fetch(`${apiUrl}/player-balance`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ token, phone }),
+    body:    JSON.stringify({ token, launch }),
     signal:  AbortSignal.timeout(8000),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
-  // Support both { balance, username } at root and wrapped in { data: { ... } }
   const data = json?.data ?? json;
   return {
-    balance:  data.balance  !== undefined ? Number(data.balance)  : null,
+    balance:  data.balance  !== undefined ? Number(data.balance) : null,
     username: data.username || null,
   };
 }
@@ -189,20 +181,13 @@ export async function refreshBalance(silent = false) {
   const auth = (() => {
     try { return JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch { return null; }
   })();
-  if (!auth?.token || !auth?.phone) return;
+  if (!auth?.token || !auth?.launch) return;
 
   if (!silent) setBalanceLoading(true);
   try {
-    const data = await fetchPlayerBalance(auth.token, auth.phone);
-    if (data.balance !== null) {
-      updateBalanceDisplay(data.balance);
-      auth.balance = String(data.balance);
-    }
-    if (data.username) {
-      window.DAMA_USERNAME = data.username;
-      auth.username = data.username;
-    }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(auth));
+    const data = await fetchPlayerBalance(auth.token, auth.launch);
+    if (data.balance !== null) updateBalanceDisplay(data.balance);
+    if (data.username) window.DAMA_USERNAME = data.username;
   } catch (err) {
     console.warn('[urlAuth] refreshBalance failed:', err.message);
     if (!silent) showOfflineOverlay();
@@ -217,64 +202,56 @@ export function initUrlAuth() {
     const params = readParams();
 
     if (!isValid(params)) {
-      const missing = REQUIRED_PARAMS.filter(k => !params[k]);
-      showInvalidOverlay(missing);
-      // Promise intentionally never resolves — app stays blocked
+      showInvalidOverlay(REQUIRED_PARAMS.filter(k => !params[k]));
+      // Promise never resolves — app stays blocked
       return;
     }
 
-    // Persist token + phone to localStorage
+    // Persist token + launch to localStorage
     localStorage.setItem(STORAGE_KEY, JSON.stringify(params));
 
-    // Expose globals used by socket.js / registry.js before async fetch
+    // Expose token globally so registry.js / socket.js pick it up
     window.DAMA_API_TOKEN = params.token;
     localStorage.setItem('dama_api_token', params.token);
-    window.DAMA_PHONE    = params.phone;
-    window.DAMA_USERNAME = 'Player';   // will be overwritten below
-    window.DAMA_BALANCE  = null;       // will be overwritten below
 
-    // Show spinner while we hit dama-backend
+    // Sensible defaults before the async fetch completes
+    window.DAMA_USERNAME = 'Player';
+    window.DAMA_BALANCE  = null;
+
     setBalanceLoading(true);
 
-    fetchPlayerBalance(params.token, params.phone)
+    fetchPlayerBalance(params.token, params.launch)
       .then(data => {
         setBalanceLoading(false);
 
-        // Apply balance
         if (data.balance !== null) {
           updateBalanceDisplay(data.balance);
-          params.balance = String(data.balance);
         }
 
-        // Apply username
         if (data.username) {
           window.DAMA_USERNAME = data.username;
-          params.username = data.username;
           const nameEl = document.getElementById('tgName');
           if (nameEl) nameEl.textContent = data.username;
         }
 
-        // Rewrite URL to contain ONLY token + phone — strip balance/username
+        // Clean the URL — keep only token + launch, nothing else
         try {
-          const url = new URL(window.location.href);
-          // Keep only these two — remove everything else
+          const url   = new URL(window.location.href);
           const clean = new URLSearchParams();
-          clean.set('token', params.token);
-          clean.set('phone', params.phone);
+          clean.set('token',  params.token);
+          clean.set('launch', params.launch);
           window.history.replaceState({}, '', `${url.pathname}?${clean.toString()}`);
         } catch (e) {
           console.warn('[urlAuth] Could not clean URL:', e.message);
         }
 
-        // Save final state (with resolved username/balance) to localStorage
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(params));
         resolve(params);
       })
       .catch(err => {
         setBalanceLoading(false);
         console.error('[urlAuth] Failed to fetch player balance:', err.message);
         showOfflineOverlay();
-        // Promise intentionally never resolves — app stays blocked
+        // Promise never resolves — app stays blocked
       });
   });
 }
