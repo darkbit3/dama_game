@@ -7,6 +7,7 @@
 
 import { tgHaptic } from './telegram.js';
 import { PlayerRegistry, seedDemoPlayers } from './registry.js';
+import { getState, setState } from './state.js';
 
 /* ── Loading screen ── */
 export function initLoader(onDone) {
@@ -109,28 +110,18 @@ export function initBetBar() {
   const presets = document.querySelectorAll('.bet-preset');
 
   // No default — player must explicitly select
-  window.currentBet  = 0;
-  window.playerReady = false;
+  setState('currentBet', 0);
+  setState('playerReady', false);
 
   function onBetSelected(amt) {
-    window.currentBet  = amt;
-    window.playerReady = true;
-    // Sync ready + bet to registry locally
-    const list = window.PlayerRegistry?.load?.() || [];
-    const me = list.find(p => p.id === window.tgUserId);
-    if (me) {
-      me.bet     = amt;
-      me.isReady = true;
-      window.PlayerRegistry.save(list);
-    }
-    // Sync to backend DB and broadcast to other players via WS
-    if (window.tgUserId) {
-      window.PlayerRegistry?.setReadyOnBackend?.(window.tgUserId, amt).then(() => {
-        renderPlayerList();
-      });
-    } else {
-      renderPlayerList();
-    }
+    setState('currentBet', amt);
+    setState('playerReady', true);
+    const list = PlayerRegistry.load();
+    const me   = list.find(p => p.id === getState('tgUserId'));
+    if (me) { me.bet = amt; me.isReady = true; PlayerRegistry.save(list); }
+    if (getState('tgUserId')) {
+      PlayerRegistry.setReadyOnBackend(getState('tgUserId'), amt).then(() => renderPlayerList());
+    } else { renderPlayerList(); }
     tgHaptic('light');
   }
 
@@ -155,19 +146,14 @@ export function initBetBar() {
       } else {
         // Empty input — not ready
         presets.forEach(b => b.classList.remove('active'));
-        window.currentBet  = 0;
-        window.playerReady = false;
-        const list = window.PlayerRegistry?.load?.() || [];
-        const me = list.find(p => p.id === window.tgUserId);
-        if (me) { me.isReady = false; window.PlayerRegistry.save(list); }
-        // Clear ready on backend
-        if (window.tgUserId) {
-          window.PlayerRegistry?.clearReadyOnBackend?.(window.tgUserId).then(() => {
-            renderPlayerList();
-          });
-        } else {
-          if (typeof renderPlayerList === 'function') renderPlayerList();
-        }
+        setState('currentBet', 0);
+        setState('playerReady', false);
+        const list = PlayerRegistry.load();
+        const me   = list.find(p => p.id === getState('tgUserId'));
+        if (me) { me.isReady = false; PlayerRegistry.save(list); }
+        if (getState('tgUserId')) {
+          PlayerRegistry.clearReadyOnBackend(getState('tgUserId')).then(() => renderPlayerList());
+        } else { renderPlayerList(); }
       }
     });
   }
@@ -252,11 +238,11 @@ function blend(hex, target, amt) {
 
 /* ── Ownership helpers ── */
 async function fetchOwnedFromBackend() {
-  if (!window.tgUserId) return;
+  if (!getState('tgUserId')) return;
   try {
     const { apiUrl } = await import('./socket.js');
-    const apiToken = window.DAMA_API_TOKEN || localStorage.getItem('dama_api_token') || '';
-    const res = await fetch(`${apiUrl}/players/${window.tgUserId}/owned`, {
+    const apiToken = getState('damaApiToken') || localStorage.getItem('dama_api_token') || '';
+    const res = await fetch(`${apiUrl}/players/${getState('tgUserId')}/owned`, {
       headers: { 'X-API-Token': apiToken },
     });
     if (res.ok) {
@@ -329,13 +315,14 @@ export function initColorPicker() {
   const savedThemeId = localStorage.getItem('dama_piece_theme') || 'classic';
   const savedStyleId = localStorage.getItem('dama_piece_style') || 'solid';
   const baseTheme = PIECE_THEMES.find(t => t.id === savedThemeId) || PIECE_THEMES[0];
+  const composed = applyStyleToTheme(baseTheme, savedStyleId);
   _pendingTheme = baseTheme;
   _pendingStyle = savedStyleId;
-  window.pieceTheme    = applyStyleToTheme(baseTheme, savedStyleId);
-  window.pieceThemeId  = savedThemeId;
-  window.pieceStyleId  = savedStyleId;
-  applyPieceTheme(window.pieceTheme);
-  updateTriggerBall(window.pieceTheme);
+  setState('pieceTheme',    composed);
+  setState('pieceThemeId',  savedThemeId);
+  setState('pieceStyleId',  savedStyleId);
+  applyPieceTheme(composed);
+  updateTriggerBall(composed);
 
   // ── Trigger button (3-dot) ──
   const trigger = document.getElementById('cpTrigger');
@@ -344,8 +331,8 @@ export function initColorPicker() {
 
   trigger.addEventListener('click', () => {
     tgHaptic('light');
-    _pendingTheme = PIECE_THEMES.find(t => t.id === window.pieceThemeId) || PIECE_THEMES[0];
-    _pendingStyle = window.pieceStyleId || 'solid';
+    _pendingTheme = PIECE_THEMES.find(t => t.id === getState('pieceThemeId')) || PIECE_THEMES[0];
+    _pendingStyle = getState('pieceStyleId') || 'solid';
     openCpModal();
   });
 
@@ -376,13 +363,14 @@ export function initColorPicker() {
     if (!isOwned(pendingStyleObj)) { showPurchaseToast(pendingStyleObj); tgHaptic('warning'); return; }
 
     const composed = applyStyleToTheme(_pendingTheme, _pendingStyle);
-    window.pieceTheme   = composed;
-    window.pieceThemeId = _pendingTheme.id;
-    window.pieceStyleId = _pendingStyle;
+    setState('pieceTheme',    composed);
+    setState('pieceThemeId',  _pendingTheme.id);
+    setState('pieceStyleId',  _pendingStyle);
     localStorage.setItem('dama_piece_theme', _pendingTheme.id);
     localStorage.setItem('dama_piece_style', _pendingStyle);
     applyPieceTheme(composed);
     updateTriggerBall(composed);
+    // notify app.js listener via state (bridge keeps window.onPieceThemeChanged in sync)
     if (typeof window.onPieceThemeChanged === 'function') window.onPieceThemeChanged(composed);
     renderPlayerList();
     tgHaptic('success');
@@ -596,7 +584,7 @@ export function applyPieceTheme(theme) {
   root.style.setProperty('--piece-wBorder', 'rgba(0,0,0,.08)');
   root.style.setProperty('--piece-wShadow', 'rgba(255,255,255,.95)');
   // Store current shape for engine.js renderBoard
-  window.pieceShapeClass = theme._shape || 'gp-shape-disc';
+  setState('pieceShapeClass', theme._shape || 'gp-shape-disc');
   if (typeof renderBoard === 'function') {
     const gs = document.getElementById('gameScreen');
     if (gs && !gs.classList.contains('hidden')) renderBoard();
@@ -650,9 +638,9 @@ export function renderPlayerList() {
   if (!container) return;
 
   const allPlayers = PlayerRegistry.getAll();
-  const me = allPlayers.find(p => p.id === window.tgUserId || p.isMe);
-  const myBet = window.currentBet || 0;
-  const isReady = window.playerReady === true;
+  const me      = allPlayers.find(p => p.id === getState('tgUserId') || p.isMe);
+  const myBet   = getState('currentBet') || 0;
+  const isReady = getState('playerReady') === true;
 
   // Update my stats sidebar — wins/losses/draws from Dama DB, balance from owner backend
   if (me) {
@@ -663,8 +651,7 @@ export function renderPlayerList() {
     if (wEl)  wEl.textContent  = me.wins    || 0;
     if (lEl)  lEl.textContent  = me.losses  || 0;
     if (dEl)  dEl.textContent  = me.draws   || 0;
-    // Always use owner-backend balance (window.DAMA_BALANCE), not Dama DB
-    if (balEl) balEl.textContent = Number(window.DAMA_BALANCE ?? me.balance ?? 500).toLocaleString();
+    if (balEl) balEl.textContent = Number(getState('damaBalance') ?? me.balance ?? 500).toLocaleString();
   }
 
   function ballStyle(t) {
@@ -675,7 +662,7 @@ export function renderPlayerList() {
 
   function buildOwnRow() {
     if (!me) return null;
-    const myTheme = window.pieceTheme || PIECE_THEMES[0];
+    const myTheme = getState('pieceTheme') || PIECE_THEMES[0];
     const myRow   = document.createElement('div');
     myRow.className = 'player-row player-row-me' + (me.online ? ' is-online' : '');
     myRow.innerHTML = `
@@ -702,7 +689,7 @@ export function renderPlayerList() {
             : `<span class="pr-bet pr-bet-none">No bet set</span>`}
         </div>
         <div class="pr-balance-row">
-          💳 Balance: <strong>${Number(window.DAMA_BALANCE ?? me.balance ?? 500).toLocaleString()} ETB</strong>
+          💳 Balance: <strong>${Number(getState('damaBalance') ?? me.balance ?? 500).toLocaleString()} ETB</strong>
         </div>
       </div>
       <div class="pr-balls">
@@ -716,7 +703,7 @@ export function renderPlayerList() {
     const bet        = player.ready_bet || player.bet || 100;
     const oppThemeId = player.piece_theme || player.pieceThemeId || 'classic';
     const oppTheme   = PIECE_THEMES.find(t => t.id === oppThemeId) || PIECE_THEMES[0];
-    const myTheme    = window.pieceTheme || PIECE_THEMES[0];
+    const myTheme    = getState('pieceTheme') || PIECE_THEMES[0];
     const sameTheme  = oppTheme.id === myTheme.id;
 
     const row = document.createElement('div');
@@ -796,20 +783,18 @@ export function renderPlayerList() {
   if (myRow) container.appendChild(myRow);
 
   // If bet selected → fetch matching ready players from backend
-  if (myBet > 0 && isReady && window.tgUserId) {
+  if (myBet > 0 && isReady && getState('tgUserId')) {
     const divider = document.createElement('div');
     divider.className = 'pl-divider';
     divider.textContent = 'Ready Players — ' + myBet + ' ETB';
     container.appendChild(divider);
 
-    // Placeholder while loading
     const loadingEl = document.createElement('div');
     loadingEl.className = 'pl-empty';
     loadingEl.innerHTML = '<span class="pl-empty-icon" style="font-size:1.2rem;opacity:.4;">⏳</span> Looking for players…';
     container.appendChild(loadingEl);
 
-    PlayerRegistry.fetchReadyPlayers(myBet, window.tgUserId).then(readyPlayers => {
-      // Remove placeholder
+    PlayerRegistry.fetchReadyPlayers(myBet, getState('tgUserId')).then(readyPlayers => {
       loadingEl.remove();
 
       if (readyPlayers.length === 0) {

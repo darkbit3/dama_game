@@ -1,6 +1,7 @@
 /* ═══════════════════════════════════════════════════
    app.js  — Main entry point (Menu & Bootstrap)
-   Imports: telegram | ui | registry | engine
+   All window.* globals replaced with ES module imports
+   and the shared state module.
 ═══════════════════════════════════════════════════ */
 
 import { initTelegram, populateTelegramUser, tgHaptic, showScreen, initBackButton } from './modules/telegram.js';
@@ -12,52 +13,39 @@ import { initErrorBoundary } from './modules/errorBoundary.js';
 import { initConnectionMonitor } from './modules/connection.js';
 import { initAutoLogout, resetIdle } from './modules/autoLogout.js';
 import { initUrlAuth, updateBalanceDisplay, refreshBalance } from './modules/urlAuth.js';
+import { setState, getState, syncFromWindow } from './modules/state.js';
 
 /* ── 0. URL Auth gate — MUST run before anything else ── */
 const urlAuth = await initUrlAuth();
-// If we reach here, token + phone + username + balance are all valid.
+// Sync any window.* set by urlAuth into our state store
+syncFromWindow();
 
-/* ── 1. Telegram init (runs immediately) ── */
+/* ── 1. Telegram init ── */
 initTelegram();
 initErrorBoundary();
 initConnectionMonitor();
-initAutoLogout();   // starts idle timer + ensures home screen on load
+initAutoLogout();
 
 /* Set defaults */
-window.pieceTheme = PIECE_THEMES[0];
+setState('pieceTheme', PIECE_THEMES[0]);
 
-/* ── 2. Expose globals needed by engine.js / ui.js ── */
-window.showScreen       = showScreen;
-window.renderPlayerList = renderPlayerList;
-window.PlayerRegistry   = PlayerRegistry;
-window.PIECE_THEMES     = PIECE_THEMES;
-
-// Expose engine ref for autoLogout resign-on-timeout
-window._engineRef = { G, endGame, WHITE: 2, BLACK: 1 };
-window.resetIdle  = resetIdle;
-// Expose socket apiUrl for engine.js finish-local calls
-window._socketRef = { apiUrl: Socket.apiUrl };
-// Expose refreshBalance globally so engine.js can call it after AI settlement
-window.refreshBalance = refreshBalance;
+/* ── 2. Wire up cross-module references (no window.* needed) ── */
+// engine.js reads these via imported references — exposed here for the
+// few places inside engine.js that still reach back to app-level state.
+// The bridge in state.js keeps window.* in sync for legacy/SDK code.
+setState('refreshBalance', refreshBalance);   // engine endGame calls this
 
 /**
  * sendStartBet — POST /api/games/start-bet synchronously.
- * Manages the processing loaders, shows floating success banners, and alerts on transaction declines.
- * @param {string} gameId
- * @param {number} betAmount
- * @param {string} mode
- * @param {string|null} player2Id
- * @returns {Promise<boolean>}  Returns true if bet is successful or skipped, false on refusal.
  */
 async function sendStartBet(gameId, betAmount, mode, player2Id = null) {
-  const playerId = window.tgUserId;
-  const phone    = window.DAMA_PHONE;
-  const apiToken = window.DAMA_API_TOKEN || localStorage.getItem('dama_api_token') || '';
+  const playerId = getState('tgUserId');
+  const phone    = getState('damaPhone');
+  const apiToken = getState('damaApiToken') || localStorage.getItem('dama_api_token') || '';
   const apiUrl   = Socket.apiUrl;
 
   if (!playerId || !phone || !apiUrl) return false;
 
-  // Show bet placing modal loader
   const loader = document.getElementById('betPlacingModal');
   if (loader) {
     loader.classList.remove('hidden');
@@ -67,10 +55,7 @@ async function sendStartBet(gameId, betAmount, mode, player2Id = null) {
   try {
     const res = await fetch(`${apiUrl}/games/start-bet`, {
       method:  'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-API-Token':  apiToken,
-      },
+      headers: { 'Content-Type': 'application/json', 'X-API-Token': apiToken },
       body: JSON.stringify({ gameId, playerId, phone, betAmount, mode, player2Id }),
       signal: AbortSignal.timeout(8000),
     });
@@ -79,14 +64,12 @@ async function sendStartBet(gameId, betAmount, mode, player2Id = null) {
     const data = json?.data || json;
     const log  = data?.betLog;
 
-    // Dismiss loader
     if (loader) {
       loader.classList.remove('modal-show');
       setTimeout(() => loader.classList.add('hidden'), 300);
     }
 
     if (res.ok && (data.skipped || log?.status === 'success')) {
-      // Show simple green accepted toast instead of debugging panel
       const toast = document.getElementById('betAcceptedToast');
       const msg   = document.getElementById('betAcceptedMsg');
       if (toast && msg) {
@@ -96,7 +79,6 @@ async function sendStartBet(gameId, betAmount, mode, player2Id = null) {
       }
       return true;
     } else {
-      // Alert deduction failure
       const reason = log?.error || data?.error || 'Unspecified integration error';
       alert(`Transaction Rejected!\nReason: ${reason}`);
       return false;
@@ -111,18 +93,14 @@ async function sendStartBet(gameId, betAmount, mode, player2Id = null) {
   }
 }
 
-/**
- * showBetAuditModal — kept for reference/manual debugging if needed.
- */
-function showBetAuditModal(betLog, betAmount, fetchError = null) {
-  // Silent execution now preferred, but kept to prevent reference errors
-}
+// Keep for reference — no-op now (silent preferred)
+function showBetAuditModal(_betLog, _betAmount, _fetchError = null) {}
 
+/* ── startGame (called by UI buttons and socket handlers) ── */
 window.startGame = async function(mode, opponent) {
   const betAmount = parseInt(document.getElementById('betInput')?.value || '0', 10);
 
-  // For local/offline games (AI or local PvP), enforce sufficient balance check
-  if (mode === 'ai' || (mode === 'pvp' && !window.activeOnlineGame)) {
+  if (mode === 'ai' || (mode === 'pvp' && !getState('activeOnlineGame'))) {
     const me = PlayerRegistry.load().find(p => p.isMe);
     if (me && me.balance < betAmount) {
       alert(`Insufficient balance! You only have ${me.balance} ETB.`);
@@ -130,22 +108,17 @@ window.startGame = async function(mode, opponent) {
     }
   }
 
-  // Enforce synchronous bet deduction check before allowing local gameplay
-  if (betAmount > 0 && (mode === 'ai' || (mode === 'pvp' && !window.activeOnlineGame))) {
-    const ts   = Date.now().toString(36).toUpperCase();
-    const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+  if (betAmount > 0 && (mode === 'ai' || (mode === 'pvp' && !getState('activeOnlineGame')))) {
+    const ts     = Date.now().toString(36).toUpperCase();
+    const rand   = Math.random().toString(36).slice(2, 6).toUpperCase();
     const tempId = (mode === 'ai' ? 'AI' : 'LOC') + '-' + ts + '-' + rand;
 
     const betPlaced = await sendStartBet(tempId, betAmount, mode, opponent?.id || null);
-    if (!betPlaced) {
-      // Balance deduction failed — abort match entirely
-      return;
-    }
-    // Transaction logged, start match with same pre-generated gameId
-    window._tempGameId  = tempId;
-    window._tempBetAmt  = betAmount;   // carry bet into engine G state
+    if (!betPlaced) return;
+    setState('tempGameId', tempId);
+    setState('tempBetAmt', betAmount);
   } else {
-    window._tempBetAmt = betAmount;
+    setState('tempBetAmt', betAmount);
   }
 
   startGame(mode, opponent);
@@ -161,22 +134,20 @@ window.startGameVsPlayer = function(opponent) {
     }
 
     const waitingModal = document.getElementById('waitingModal');
-    const waitingSub = document.getElementById('waitingSub');
+    const waitingSub   = document.getElementById('waitingSub');
     if (waitingSub) waitingSub.textContent = `Challenging ${opponent.name} for ${betAmount} ETB...`;
     if (waitingModal) {
       waitingModal.classList.remove('hidden');
       setTimeout(() => waitingModal.classList.add('modal-show'), 10);
     }
 
-    window.activeChallenge = { opponentId: opponent.id, betAmount };
-
+    setState('activeChallenge', { opponentId: opponent.id, betAmount });
     Socket.send('challenge_send', {
-      challengerId: window.tgUserId,
-      opponentId: opponent.id,
-      betAmount
+      challengerId: getState('tgUserId'),
+      opponentId:   opponent.id,
+      betAmount,
     });
   } else {
-    window._opponent = opponent;
     startGame('pvp', opponent);
     sendStartBet(G.gameId, 0, 'pvp', opponent?.id || null);
   }
@@ -185,44 +156,43 @@ window.startGameVsPlayer = function(opponent) {
 /* ── 3. Loading screen → menu ── */
 initLoader(() => {
   populateTelegramUser(() => {
-    // Load saved theme for this user and restore it
-    const saved = localStorage.getItem('dama_piece_theme');
-    const savedTheme = PIECE_THEMES.find(t => t.id === saved) || PIECE_THEMES[0];
-    window.pieceTheme = savedTheme;
+    // Sync telegram identity into state store
+    syncFromWindow();
 
-    // Register user, syncing their current piece theme
+    const saved      = localStorage.getItem('dama_piece_theme');
+    const savedStyle = localStorage.getItem('dama_piece_style') || 'solid';
+    const savedTheme = PIECE_THEMES.find(t => t.id === saved) || PIECE_THEMES[0];
+    setState('pieceTheme',   savedTheme);
+    setState('pieceThemeId', savedTheme.id);
+    setState('pieceStyleId', savedStyle);
+
     PlayerRegistry.register({
-      id:           window.tgUserId,
-      name:         window.tgUserName,
-      photo:        window.tgUserPhoto,
+      id:           getState('tgUserId'),
+      name:         getState('tgUserName'),
+      photo:        getState('tgUserPhoto'),
       isMe:         true,
-      bet:          window.currentBet || 100,
+      bet:          getState('currentBet') || 100,
       pieceThemeId: savedTheme.id,
     });
 
-    // Immediately fetch fresh profile details & stats from database
-    PlayerRegistry.fetchCurrentPlayer(window.tgUserId);
+    PlayerRegistry.fetchCurrentPlayer(getState('tgUserId'));
+    Socket.connect(getState('tgUserId'));
 
-    // Connect WebSocket
-    Socket.connect(window.tgUserId);
+    setState('playerReady', false);
+    setState('currentBet', 0);
+    PlayerRegistry.clearReadyOnBackend(getState('tgUserId')).catch(() => {});
 
-    // Clear any stale ready state on login
-    window.playerReady = false;
-    window.currentBet  = 0;
-    PlayerRegistry.clearReadyOnBackend(window.tgUserId).catch(() => {});
-
-    // Initial fetch of player list and setup periodic refresh
     PlayerRegistry.fetchPlayers();
     setInterval(() => {
       PlayerRegistry.fetchPlayers();
-      PlayerRegistry.fetchCurrentPlayer(window.tgUserId);
+      PlayerRegistry.fetchCurrentPlayer(getState('tgUserId'));
     }, 10000);
-    // Refresh ready player list every 8 seconds
+
     setInterval(() => {
-      if (window.playerReady && window.currentBet > 0) renderPlayerList();
+      if (getState('playerReady') && getState('currentBet') > 0) renderPlayerList();
     }, 8000);
 
-    // ── Balance auto-refresh every 10s (silent, no spinner) ──────────────
+    // ── Balance auto-refresh every 10s ──
     const _isOnMenu = () =>
       document.getElementById('gameScreen')?.classList.contains('hidden') !== false;
 
@@ -230,9 +200,6 @@ initLoader(() => {
       if (_isOnMenu()) await refreshBalance(true).catch(() => {});
     }, 10000);
 
-    // ── Refresh immediately when tab/app comes back to foreground ─────────
-    // Covers: switching back from another app, closing & reopening the tab,
-    // Telegram mini-app going to background then returning.
     document.addEventListener('visibilitychange', async () => {
       if (document.visibilityState === 'visible' && _isOnMenu()) {
         await refreshBalance(true).catch(() => {});
@@ -242,16 +209,15 @@ initLoader(() => {
       if (_isOnMenu()) await refreshBalance(true).catch(() => {});
     });
 
-    // ── First render: show the balance fetched at page-load time ──────────
+    // ── Show initial balance ──
     const balEl = document.getElementById('myBalance');
     if (balEl) {
-      const me = PlayerRegistry.load().find(p => p.id === window.tgUserId);
-      const bal = window.DAMA_BALANCE ?? me?.balance ?? 500;
+      const me  = PlayerRegistry.load().find(p => p.id === getState('tgUserId'));
+      const bal = getState('damaBalance') ?? me?.balance ?? 500;
       balEl.textContent = Number(bal).toLocaleString();
     }
 
     renderPlayerList();
-
   });
 
   initParticles();
@@ -262,8 +228,8 @@ initLoader(() => {
 
 /* ── 4. Button wiring ── */
 function initApp() {
-  if (window._appInitialized) return;
-  window._appInitialized = true;
+  if (getState('appInitialized')) return;
+  setState('appInitialized', true);
   injectRippleStyle();
 
   const playBtn = document.getElementById('playNowBtn');
@@ -275,36 +241,24 @@ function initApp() {
     });
   }
 
-  // Cancel button for AI modal
   document.getElementById('aiModalCloseBtn')?.addEventListener('click', () => {
     const modal = document.getElementById('aiModal');
-    if (modal) {
-      modal.classList.remove('modal-show');
-      setTimeout(() => modal.classList.add('hidden'), 300);
-    }
+    if (modal) { modal.classList.remove('modal-show'); setTimeout(() => modal.classList.add('hidden'), 300); }
   });
 
-  // ── Balance refresh button (manual, shows spinner) ──────────────
   document.getElementById('balRefreshBtn')?.addEventListener('click', async () => {
     tgHaptic('light');
-    await refreshBalance(false);   // false = show spinner for user feedback
+    await refreshBalance(false);
   });
 
-  // ── How to Play ──────────────────────────────────────────────
   document.getElementById('howToPlayBtn')?.addEventListener('click', () => {
     tgHaptic('light');
     const modal = document.getElementById('howToPlayModal');
-    if (modal) {
-      modal.classList.remove('hidden');
-      setTimeout(() => modal.classList.add('modal-show'), 10);
-    }
+    if (modal) { modal.classList.remove('hidden'); setTimeout(() => modal.classList.add('modal-show'), 10); }
   });
   document.getElementById('howToPlayClose')?.addEventListener('click', () => {
     const modal = document.getElementById('howToPlayModal');
-    if (modal) {
-      modal.classList.remove('modal-show');
-      setTimeout(() => modal.classList.add('hidden'), 300);
-    }
+    if (modal) { modal.classList.remove('modal-show'); setTimeout(() => modal.classList.add('hidden'), 300); }
   });
   document.getElementById('howToPlayModal')?.addEventListener('click', (e) => {
     if (e.target.id === 'howToPlayModal') {
@@ -314,22 +268,15 @@ function initApp() {
     }
   });
 
-  // ── History ──────────────────────────────────────────────────
   document.getElementById('historyBtn')?.addEventListener('click', () => {
     tgHaptic('light');
     const modal = document.getElementById('historyModal');
-    if (modal) {
-      modal.classList.remove('hidden');
-      setTimeout(() => modal.classList.add('modal-show'), 10);
-    }
+    if (modal) { modal.classList.remove('hidden'); setTimeout(() => modal.classList.add('modal-show'), 10); }
     loadHistory();
   });
   document.getElementById('historyClose')?.addEventListener('click', () => {
     const modal = document.getElementById('historyModal');
-    if (modal) {
-      modal.classList.remove('modal-show');
-      setTimeout(() => modal.classList.add('hidden'), 300);
-    }
+    if (modal) { modal.classList.remove('modal-show'); setTimeout(() => modal.classList.add('hidden'), 300); }
   });
   document.getElementById('historyModal')?.addEventListener('click', (e) => {
     if (e.target.id === 'historyModal') {
@@ -339,7 +286,6 @@ function initApp() {
     }
   });
 
-  // Click on modal backdrop to close it too
   document.getElementById('aiModal')?.addEventListener('click', (e) => {
     if (e.target.id === 'aiModal') {
       const modal = document.getElementById('aiModal');
@@ -348,14 +294,13 @@ function initApp() {
     }
   });
 
-  // Challenge accept / decline / cancel buttons
   document.getElementById('challengeAcceptBtn')?.addEventListener('click', () => {
-    const invite = window.incomingChallenge;
+    const invite = getState('incomingChallenge');
     if (invite) {
       Socket.send('challenge_accept', {
         challengerId: invite.challenger.id,
-        opponentId: window.tgUserId,
-        betAmount: invite.betAmount
+        opponentId:   getState('tgUserId'),
+        betAmount:    invite.betAmount,
       });
     }
     document.getElementById('challengeModal')?.classList.add('hidden');
@@ -363,29 +308,29 @@ function initApp() {
   });
 
   document.getElementById('challengeDeclineBtn')?.addEventListener('click', () => {
-    const invite = window.incomingChallenge;
+    const invite = getState('incomingChallenge');
     if (invite) {
       Socket.send('challenge_decline', {
         challengerId: invite.challenger.id,
-        opponentId: window.tgUserId
+        opponentId:   getState('tgUserId'),
       });
     }
     document.getElementById('challengeModal')?.classList.add('hidden');
     document.getElementById('challengeModal')?.classList.remove('modal-show');
-    window.incomingChallenge = null;
+    setState('incomingChallenge', null);
   });
 
   document.getElementById('waitingCancelBtn')?.addEventListener('click', () => {
-    const challenge = window.activeChallenge;
+    const challenge = getState('activeChallenge');
     if (challenge) {
       Socket.send('challenge_decline', {
-        challengerId: window.tgUserId,
-        opponentId: challenge.opponentId
+        challengerId: getState('tgUserId'),
+        opponentId:   challenge.opponentId,
       });
     }
     document.getElementById('waitingModal')?.classList.add('hidden');
     document.getElementById('waitingModal')?.classList.remove('modal-show');
-    window.activeChallenge = null;
+    setState('activeChallenge', null);
   });
 }
 
@@ -395,52 +340,47 @@ if (document.readyState === 'loading') {
   initApp();
 }
 
-/* ── 5. Sync piece theme to registry whenever user changes it ── */
+/* ── 5. Sync piece theme to registry ── */
 window.onPieceThemeChanged = function(theme) {
-  if (!window.tgUserId) return;
+  const uid = getState('tgUserId');
+  if (!uid) return;
   const list = PlayerRegistry.load();
-  const me = list.find(p => p.id === window.tgUserId);
+  const me   = list.find(p => p.id === uid);
   if (me) { me.pieceThemeId = theme.id; PlayerRegistry.save(list); }
 };
 
 /* ── 6. Telegram hardware back button ── */
 initBackButton(() => {
+  const aog = getState('activeOnlineGame');
   if (!G.gameOver && G.mode === 'pvp' && G.isOnlinePvP && G.gameId) {
-    window.Socket?.send('resign', { gameId: G.gameId, playerId: window.tgUserId });
+    Socket.send('resign', { gameId: G.gameId, playerId: getState('tgUserId') });
     endGame(G.myColor === 'black' ? 2 : 1, 'You quit the game', true);
   }
   if (G.timerInterval) clearInterval(G.timerInterval);
   showScreen('mainMenu');
 });
 
-/* ── 7. WebSocket Event Handlers ── */
-window.Socket = Socket;
+/* ── 7. WebSocket event handlers ── */
+window.Socket = Socket;   // kept for Telegram SDK / inline onclick fallback only
 
 Socket.on('challenge_receive', (msg) => {
-  const modal = document.getElementById('challengeModal');
-  const title = document.getElementById('challengeTitle');
-  const sub = document.getElementById('challengeSub');
+  const modal  = document.getElementById('challengeModal');
+  const title  = document.getElementById('challengeTitle');
+  const sub    = document.getElementById('challengeSub');
   const betVal = document.getElementById('challengeBet');
 
-  if (title) title.textContent = `Match Challenge!`;
-  if (sub) sub.textContent = `${msg.challenger.name} challenges you to a game.`;
+  if (title)  title.textContent  = `Match Challenge!`;
+  if (sub)    sub.textContent    = `${msg.challenger.name} challenges you to a game.`;
   if (betVal) betVal.textContent = msg.betAmount;
 
-  window.incomingChallenge = msg;
-
-  if (modal) {
-    modal.classList.remove('hidden');
-    setTimeout(() => modal.classList.add('modal-show'), 10);
-  }
+  setState('incomingChallenge', msg);
+  if (modal) { modal.classList.remove('hidden'); setTimeout(() => modal.classList.add('modal-show'), 10); }
 });
 
-Socket.on('challenge_declined', (msg) => {
+Socket.on('challenge_declined', () => {
   const modal = document.getElementById('waitingModal');
-  if (modal) {
-    modal.classList.add('hidden');
-    modal.classList.remove('modal-show');
-  }
-  window.activeChallenge = null;
+  if (modal) { modal.classList.add('hidden'); modal.classList.remove('modal-show'); }
+  setState('activeChallenge', null);
   alert('Opponent declined your challenge.');
 });
 
@@ -450,17 +390,16 @@ Socket.on('game_start', (msg) => {
   document.getElementById('waitingModal')?.classList.add('hidden');
   document.getElementById('waitingModal')?.classList.remove('modal-show');
 
-  // Clear ready state — player is now in-game
-  window.playerReady = false;
-  if (window.tgUserId) PlayerRegistry.clearReadyOnBackend(window.tgUserId).catch(() => {});
+  setState('playerReady', false);
+  if (getState('tgUserId')) PlayerRegistry.clearReadyOnBackend(getState('tgUserId')).catch(() => {});
 
-  window.activeOnlineGame = {
-    gameId: msg.gameId,
-    myColor: msg.myColor,
-    turn: msg.turn,
+  setState('activeOnlineGame', {
+    gameId:    msg.gameId,
+    myColor:   msg.myColor,
+    turn:      msg.turn,
     betAmount: msg.betAmount,
-    history: msg.history || []
-  };
+    history:   msg.history || [],
+  });
 
   startGame('pvp', msg.opponent);
 });
@@ -470,95 +409,68 @@ Socket.on('move_made', (msg) => {
 });
 
 Socket.on('game_over', (msg) => {
+  const aog = getState('activeOnlineGame');
   let winnerColor = null;
   if (msg.winnerId) {
-    if (msg.winnerId === window.tgUserId) {
-      winnerColor = window.activeOnlineGame.myColor === 'black' ? 1 : 2; // BLACK=1, WHITE=2
+    if (msg.winnerId === getState('tgUserId')) {
+      winnerColor = aog.myColor === 'black' ? 1 : 2;
     } else {
-      winnerColor = window.activeOnlineGame.myColor === 'black' ? 2 : 1;
+      winnerColor = aog.myColor === 'black' ? 2 : 1;
     }
   }
-
-  // Pass settlement data so win modal shows correct payout (pot − 10% fee)
-  const settlement = msg.settlement || null;
-  endGame(winnerColor, msg.reason, true, settlement);
-
-  // Refresh balance from token backend after PvP game — both winner and loser updated
-  setTimeout(() => {
-    if (typeof window.refreshBalance === 'function') window.refreshBalance(true);
-  }, 800);
+  endGame(winnerColor, msg.reason, true, msg.settlement || null);
+  setTimeout(() => refreshBalance(true), 800);
 });
 
-// Update local cache and re-render when any player's data changes (balance, wins, etc.)
 Socket.on('player_updated', (msg) => {
   if (msg.player) {
-    // Update this player in local registry cache
     const list = PlayerRegistry.load();
     const idx  = list.findIndex(p => p.id === msg.player.id);
     if (idx !== -1) {
       list[idx] = {
         ...list[idx],
-        balance:     msg.player.balance,
-        wins:        msg.player.wins,
-        losses:      msg.player.losses,
-        draws:       msg.player.draws,
-        online:      msg.player.online === 1,
-        isReady:     msg.player.is_ready === 1,
-        readyBet:    msg.player.ready_bet || 0,
-        lastSeen:    (msg.player.last_seen || 0) * 1000,
+        balance:  msg.player.balance,
+        wins:     msg.player.wins,
+        losses:   msg.player.losses,
+        draws:    msg.player.draws,
+        online:   msg.player.online === 1,
+        isReady:  msg.player.is_ready === 1,
+        readyBet: msg.player.ready_bet || 0,
+        lastSeen: (msg.player.last_seen || 0) * 1000,
       };
       PlayerRegistry.save(list);
     }
-    // If it's the current user, refresh balance from owner backend
-    if (msg.player.id === window.tgUserId) {
-      // Don't use Dama DB balance — fetch real balance from owner backend
-      refreshBalance();
-    }
+    if (msg.player.id === getState('tgUserId')) refreshBalance();
   }
-  // Refresh ready list if applicable
-  if (window.playerReady && window.currentBet > 0) {
-    renderPlayerList();
-  }
+  if (getState('playerReady') && getState('currentBet') > 0) renderPlayerList();
 });
 
-Socket.on('opponent_left', (msg) => {
+Socket.on('opponent_left', () => {
   const statusBar = document.getElementById('gameStatus');
-  if (statusBar) {
-    statusBar.innerHTML = `<span style="color:var(--accent);">⚠️ Opponent disconnected! Reconnecting...</span>`;
-  }
+  if (statusBar) statusBar.innerHTML = `<span style="color:var(--accent);">⚠️ Opponent disconnected! Reconnecting...</span>`;
 });
 
-Socket.on('opponent_rejoined', (msg) => {
+Socket.on('opponent_rejoined', () => {
   const statusBar = document.getElementById('gameStatus');
-  if (statusBar) {
-    statusBar.innerHTML = `<span style="color:var(--success);">✓ Opponent reconnected!</span>`;
-  }
+  if (statusBar) statusBar.innerHTML = `<span style="color:var(--success);">✓ Opponent reconnected!</span>`;
 });
 
 Socket.on('kicked', (msg) => {
-  const modal = document.getElementById('kickedModal');
+  const modal    = document.getElementById('kickedModal');
   const reasonEl = document.getElementById('kickedReason');
   if (reasonEl) reasonEl.textContent = msg.reason || 'You have been logged in on another device or tab.';
-  if (modal) {
-    modal.classList.remove('hidden');
-    setTimeout(() => modal.classList.add('modal-show'), 10);
-  }
+  if (modal) { modal.classList.remove('hidden'); setTimeout(() => modal.classList.add('modal-show'), 10); }
 });
 
-/* ── 8. AI Opponent Modal population & render ── */
+/* ── 8. AI bot modal ── */
 function escHtml(s) {
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
-// Fetch bots fresh from DB every time — no localStorage
 async function fetchBotsFromDB() {
-  const apiToken = window.DAMA_API_TOKEN || localStorage.getItem('dama_api_token') || '';
-  const base = Socket.apiUrl;
-  const res = await fetch(`${base}/ai/bots/public`, {
-    headers: { 'Content-Type': 'application/json', ...(apiToken ? { 'X-API-Token': apiToken } : {}) }
+  const apiToken = getState('damaApiToken') || localStorage.getItem('dama_api_token') || '';
+  const res = await fetch(`${Socket.apiUrl}/ai/bots/public`, {
+    headers: { 'Content-Type': 'application/json', ...(apiToken ? { 'X-API-Token': apiToken } : {}) },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
@@ -566,7 +478,7 @@ async function fetchBotsFromDB() {
 }
 
 function openAiModal() {
-  const modal = document.getElementById('aiModal');
+  const modal     = document.getElementById('aiModal');
   const container = document.getElementById('aiBotList');
   if (!modal || !container) return;
 
@@ -582,11 +494,11 @@ function openAiModal() {
 }
 
 function pctToTier(pct) {
-  if (pct <= 20) return { label: 'Very Easy', cls: 'bot-diff-veryeasy', color: '#4cde80' }
-  if (pct <= 40) return { label: 'Easy',      cls: 'bot-diff-easy',    color: '#7ded9a' }
-  if (pct <= 60) return { label: 'Normal',    cls: 'bot-diff-medium',  color: '#f0c94a' }
-  if (pct <= 80) return { label: 'Hard',      cls: 'bot-diff-hard',    color: '#f39c12' }
-  return               { label: 'Very Hard',  cls: 'bot-diff-veryhard', color: '#e74c3c' }
+  if (pct <= 20) return { label: 'Very Easy', cls: 'bot-diff-veryeasy', color: '#4cde80' };
+  if (pct <= 40) return { label: 'Easy',      cls: 'bot-diff-easy',     color: '#7ded9a' };
+  if (pct <= 60) return { label: 'Normal',    cls: 'bot-diff-medium',   color: '#f0c94a' };
+  if (pct <= 80) return { label: 'Hard',      cls: 'bot-diff-hard',     color: '#f39c12' };
+  return               { label: 'Very Hard',  cls: 'bot-diff-veryhard', color: '#e74c3c' };
 }
 
 function renderBotsList(bots, container, modal) {
@@ -595,17 +507,12 @@ function renderBotsList(bots, container, modal) {
     container.innerHTML = `<div style="text-align:center;padding:20px;color:var(--text-muted);">No AI bots found.</div>`;
     return;
   }
-
-  // Sort easiest → hardest by pct
   const sorted = [...bots].sort((a, b) => (a.pct ?? 50) - (b.pct ?? 50));
-
   sorted.forEach(bot => {
-    // ai_bots table returns: id, name, depth, pct, wins, losses, draws
-    const pct  = bot.pct  ?? 50;
+    const pct  = bot.pct ?? 50;
     const tier = pctToTier(pct);
     const row  = document.createElement('div');
     row.className = 'bot-select-row';
-
     row.innerHTML = `
       <div class="bot-select-avatar">🤖</div>
       <div class="bot-select-info">
@@ -624,17 +531,13 @@ function renderBotsList(bots, container, modal) {
           </div>
         </div>
       </div>
-      <div class="bot-select-play">▶</div>
-    `;
-
+      <div class="bot-select-play">▶</div>`;
     row.addEventListener('click', () => {
       tgHaptic('medium');
       modal.classList.remove('modal-show');
       setTimeout(() => modal.classList.add('hidden'), 300);
-      // Pass bot with aiPct so engine.js picks up the right difficulty
       window.startGame('ai', { ...bot, aiPct: pct });
     });
-
     container.appendChild(row);
   });
 }
@@ -646,19 +549,19 @@ async function loadHistory() {
   body.innerHTML = '<div class="hist-loading">Loading…</div>';
 
   try {
-    const apiToken = window.DAMA_API_TOKEN || localStorage.getItem('dama_api_token') || '';
-    const base = Socket.apiUrl;
-    const playerId = window.tgUserId;
+    const apiToken = getState('damaApiToken') || localStorage.getItem('dama_api_token') || '';
+    const base     = Socket.apiUrl;
+    const playerId = getState('tgUserId');
     if (!playerId) {
       body.innerHTML = '<div class="hist-empty"><div class="hist-empty-icon">📜</div>Log in to see your history.</div>';
       return;
     }
 
     const res = await fetch(`${base}/games?playerId=${encodeURIComponent(playerId)}&limit=50`, {
-      headers: { 'Content-Type': 'application/json', ...(apiToken ? { 'X-API-Token': apiToken } : {}) }
+      headers: { 'Content-Type': 'application/json', ...(apiToken ? { 'X-API-Token': apiToken } : {}) },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
+    const json  = await res.json();
     const games = Array.isArray(json.data) ? json.data : (Array.isArray(json) ? json : []);
 
     if (games.length === 0) {
@@ -669,44 +572,27 @@ async function loadHistory() {
     body.innerHTML = '';
     games.forEach(game => {
       const isPlayer1  = game.player1_id === playerId;
-      const won        = game.winner_id === playerId;
+      const won        = game.winner_id  === playerId;
       const draw       = game.status === 'finished' && !game.winner_id;
       const result     = draw ? 'draw' : won ? 'win' : 'loss';
       const badge      = result === 'win' ? 'WIN' : result === 'loss' ? 'LOSS' : 'DRAW';
-
-      // Use server-resolved names (joined from players / ai_bots tables)
-      const myName     = isPlayer1
-        ? (game.player1_name || game.player1_id)
-        : (game.player2_name || game.player2_id);
+      const myName     = isPlayer1 ? (game.player1_name || game.player1_id) : (game.player2_name || game.player2_id);
       const oppName    = isPlayer1
         ? (game.player2_name || (game.mode === 'ai' ? '🤖 AI Bot' : game.player2_id || 'Unknown'))
         : (game.player1_name || game.player1_id || 'Unknown');
       const winnerName = game.winner_name || (draw ? null : (won ? myName : oppName));
-
-      const shortId = game.id ? game.id.slice(0, 8).toUpperCase() : '—';
-
-      const date = game.finished_at
-        ? new Date(game.finished_at * 1000).toLocaleString(undefined, {
-            month: 'short', day: 'numeric',
-            hour: '2-digit', minute: '2-digit'
-          })
-        : game.created_at
-          ? new Date(game.created_at * 1000).toLocaleString(undefined, {
-              month: 'short', day: 'numeric',
-              hour: '2-digit', minute: '2-digit'
-            })
-          : '—';
-
-      const duration = game.duration_sec && game.duration_sec > 0
-        ? `${Math.floor(game.duration_sec / 60)}m ${game.duration_sec % 60}s`
-        : null;
-
-      const betAmt    = game.bet_amount || 0;
+      const shortId    = game.id ? game.id.slice(0, 8).toUpperCase() : '—';
+      const fmtDate    = ts => ts
+        ? new Date(ts * 1000).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' })
+        : '—';
+      const date       = fmtDate(game.finished_at || game.created_at);
+      const duration   = game.duration_sec && game.duration_sec > 0
+        ? `${Math.floor(game.duration_sec / 60)}m ${game.duration_sec % 60}s` : null;
+      const betAmt     = game.bet_amount || 0;
       const betDisplay = betAmt > 0
-        ? `${result === 'win' ? '+' : result === 'loss' ? '−' : '±'}${betAmt} ETB`
+        ? `${result==='win'?'+':result==='loss'?'−':'±'}${betAmt} ETB`
         : game.mode === 'ai' ? 'Practice' : 'No bet';
-      const betClass  = result === 'win'  && betAmt > 0 ? 'win-amount'
-                      : result === 'loss' && betAmt > 0 ? 'loss-amount' : '';
+      const betClass   = result==='win' && betAmt>0 ? 'win-amount' : result==='loss' && betAmt>0 ? 'loss-amount' : '';
 
       const row = document.createElement('div');
       row.className = 'hist-item';
@@ -719,7 +605,7 @@ async function loadHistory() {
             <span class="hist-p2">${escHtml(isPlayer1 ? oppName : myName)}</span>
           </div>
           <div class="hist-meta">
-            <span class="hist-gameid" title="Game ID: ${escHtml(game.id || '')}">🎮 #${shortId}</span>
+            <span class="hist-gameid" title="Game ID: ${escHtml(game.id||'')}">🎮 #${shortId}</span>
             <span>${date}</span>
             ${duration ? `<span>⏱ ${duration}</span>` : ''}
             ${game.move_count ? `<span>♟ ${game.move_count} moves</span>` : ''}
@@ -727,10 +613,9 @@ async function loadHistory() {
           ${winnerName ? `<div class="hist-winner">👑 Winner: ${escHtml(winnerName)}</div>` : draw ? '<div class="hist-winner draw">🤝 Draw</div>' : ''}
         </div>
         <div class="hist-right">
-          <div class="hist-mode">${game.mode === 'ai' ? '🤖 AI' : '👥 PvP'}</div>
+          <div class="hist-mode">${game.mode==='ai'?'🤖 AI':'👥 PvP'}</div>
           <div class="hist-bet ${betClass}">${betDisplay}</div>
-        </div>
-      `;
+        </div>`;
       body.appendChild(row);
     });
   } catch (err) {
