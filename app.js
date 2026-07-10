@@ -37,6 +37,8 @@ window._engineRef = { G, endGame, WHITE: 2, BLACK: 1 };
 window.resetIdle  = resetIdle;
 // Expose socket apiUrl for engine.js finish-local calls
 window._socketRef = { apiUrl: Socket.apiUrl };
+// Expose refreshBalance globally so engine.js can call it after AI settlement
+window.refreshBalance = refreshBalance;
 
 /**
  * sendStartBet — POST /api/games/start-bet synchronously.
@@ -140,7 +142,10 @@ window.startGame = async function(mode, opponent) {
       return;
     }
     // Transaction logged, start match with same pre-generated gameId
-    window._tempGameId = tempId;
+    window._tempGameId  = tempId;
+    window._tempBetAmt  = betAmount;   // carry bet into engine G state
+  } else {
+    window._tempBetAmt = betAmount;
   }
 
   startGame(mode, opponent);
@@ -477,6 +482,11 @@ Socket.on('game_over', (msg) => {
   // Pass settlement data so win modal shows correct payout (pot − 10% fee)
   const settlement = msg.settlement || null;
   endGame(winnerColor, msg.reason, true, settlement);
+
+  // Refresh balance from token backend after PvP game — both winner and loser updated
+  setTimeout(() => {
+    if (typeof window.refreshBalance === 'function') window.refreshBalance(true);
+  }, 800);
 });
 
 // Update local cache and re-render when any player's data changes (balance, wins, etc.)

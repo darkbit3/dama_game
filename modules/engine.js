@@ -938,6 +938,7 @@ export function endGame(winner, reason, isRemote = false, settlement = null) {
             humanId:    myId,
             aiId:       oppId,
             result:     aiResult,
+            betAmount,            // send betAmount so server can patch game row if needed
             durationSec,
             moveCount:  G.moveCount,
           }),
@@ -952,13 +953,17 @@ export function endGame(winner, reason, isRemote = false, settlement = null) {
                 prizeEl.textContent = s.winnerPayout.toLocaleString();
               }
             }
+            // Refresh balance from token backend — it now has the updated amount
+            if (typeof window.refreshBalance === 'function') {
+              setTimeout(() => window.refreshBalance(true), 500);
+            }
             // Refresh player stats
             setTimeout(() => {
               window.PlayerRegistry?.fetchPlayers?.().then(() => {
                 if (typeof window.renderPlayerList === 'function') window.renderPlayerList();
               });
               window.PlayerRegistry?.fetchCurrentPlayer?.(myId);
-            }, 300);
+            }, 600);
           }
         }).catch(() => { /* silent */ });
 
@@ -1452,6 +1457,12 @@ export function startGame(mode, opponentOrNull) {
       const ts   = Date.now().toString(36).toUpperCase();
       const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
       G.gameId   = (mode === 'ai' ? 'AI' : 'LOC') + '-' + ts + '-' + rand;
+    }
+    // Carry bet amount into game state for settlement
+    if (window._tempBetAmt !== undefined) {
+      G.betAmount        = window._tempBetAmt;
+      window.currentBet  = window._tempBetAmt;
+      window._tempBetAmt = undefined;
     }
   }
 
