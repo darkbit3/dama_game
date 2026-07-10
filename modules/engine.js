@@ -879,7 +879,7 @@ function checkSoloKingRule(movingPlayer) {
   return false;
 }
 
-export function endGame(winner, reason, isRemote = false) {
+export function endGame(winner, reason, isRemote = false, settlement = null) {
   G.gameOver = true;
   clearInterval(G.timerInterval);
   stopCountdown();
@@ -921,48 +921,85 @@ export function endGame(winner, reason, isRemote = false) {
       const durationSec = Math.floor((Date.now() - G.startTime) / 1000);
       const { apiUrl } = window._socketRef || {};
       const apiToken = window.DAMA_API_TOKEN || localStorage.getItem('dama_api_token') || '';
-      const endpoint = (apiUrl || window.Socket?.apiUrl || '') + '/games/finish-local';
+      const betAmount = G.betAmount || window.currentBet || 0;
 
-      // In AI mode: human is BLACK, AI is WHITE — winner===BLACK means human won
-      // result is always from human (player1) perspective
-      let localResult;
-      if (winner === null || winner === undefined) localResult = 'draw';
-      else if (G.mode === 'ai') {
-        localResult = winner === BLACK ? 'win' : 'loss';
+      // ── AI game WITH a real bet → use finish-ai-bet for full settlement ──
+      if (G.mode === 'ai' && betAmount > 0 && G.gameId && myId && oppId) {
+        const endpoint = (apiUrl || window.Socket?.apiUrl || '') + '/games/finish-ai-bet';
+        let aiResult;
+        if (winner === null || winner === undefined) aiResult = 'draw';
+        else aiResult = winner === BLACK ? 'win' : 'loss'; // BLACK = human player
+
+        fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Token': apiToken },
+          body: JSON.stringify({
+            gameId:     G.gameId,
+            humanId:    myId,
+            aiId:       oppId,
+            result:     aiResult,
+            durationSec,
+            moveCount:  G.moveCount,
+          }),
+        }).then(async res => {
+          if (res.ok) {
+            const json = await res.json();
+            const s = json?.data?.settlement;
+            // Patch the win modal with the server-confirmed payout
+            if (s && typeof s.winnerPayout === 'number') {
+              const prizeEl = document.getElementById('ms-prize');
+              if (prizeEl && aiResult === 'win') {
+                prizeEl.textContent = s.winnerPayout.toLocaleString();
+              }
+            }
+            // Refresh player stats
+            setTimeout(() => {
+              window.PlayerRegistry?.fetchPlayers?.().then(() => {
+                if (typeof window.renderPlayerList === 'function') window.renderPlayerList();
+              });
+              window.PlayerRegistry?.fetchCurrentPlayer?.(myId);
+            }, 300);
+          }
+        }).catch(() => { /* silent */ });
+
       } else {
-        // local pvp — BLACK = player1 = me
-        localResult = winner === BLACK ? 'win' : 'loss';
-      }
+        // ── No-bet game or local PvP → finish-local (stats only) ────────────
+        const endpoint = (apiUrl || window.Socket?.apiUrl || '') + '/games/finish-local';
 
-      // winnerId — set for me or the opponent (including AI bots)
-      let winnerDbId = null;
-      if (winner === BLACK) winnerDbId = myId;
-      else if (winner === WHITE && oppId) {
-        winnerDbId = oppId;
-      }
-
-      fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-API-Token': apiToken },
-        body: JSON.stringify({
-          mode:        G.mode,
-          player1Id:   myId,
-          player2Id:   oppId || null,
-          winnerId:    winnerDbId,
-          result:      localResult,
-          durationSec,
-          moveCount:   G.moveCount,
-        }),
-      }).then(res => {
-        if (res.ok) {
-          // Refresh player data from backend to show updated stats
-          setTimeout(() => {
-            window.PlayerRegistry?.fetchPlayers?.().then(() => {
-              if (typeof window.renderPlayerList === 'function') window.renderPlayerList();
-            });
-          }, 300);
+        let localResult;
+        if (winner === null || winner === undefined) localResult = 'draw';
+        else if (G.mode === 'ai') {
+          localResult = winner === BLACK ? 'win' : 'loss';
+        } else {
+          localResult = winner === BLACK ? 'win' : 'loss';
         }
-      }).catch(() => { /* silent */ });
+
+        let winnerDbId = null;
+        if (winner === BLACK) winnerDbId = myId;
+        else if (winner === WHITE && oppId) winnerDbId = oppId;
+
+        fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-API-Token': apiToken },
+          body: JSON.stringify({
+            mode:        G.mode,
+            player1Id:   myId,
+            player2Id:   oppId || null,
+            winnerId:    winnerDbId,
+            result:      localResult,
+            durationSec,
+            moveCount:   G.moveCount,
+          }),
+        }).then(res => {
+          if (res.ok) {
+            setTimeout(() => {
+              window.PlayerRegistry?.fetchPlayers?.().then(() => {
+                if (typeof window.renderPlayerList === 'function') window.renderPlayerList();
+              });
+            }, 300);
+          }
+        }).catch(() => { /* silent */ });
+      }
     }
   }
 
@@ -995,7 +1032,18 @@ export function endGame(winner, reason, isRemote = false) {
   }
 
   const betAmt = G.betAmount || window.currentBet || 0;
-  setTimeout(() => showWinModal(wName, reason, iLocalWin, betAmt), 400);
+  // Use server-confirmed winnerPayout when available (accurate after fee deduction).
+  // For PvP: settlement arrives via WS game_over message.
+  // For AI: settlement arrives via finish-ai-bet REST response.
+  // Fallback: compute locally (bet * 2 * 0.9) — 10% fee estimate.
+  let winnerPayout = 0;
+  if (settlement && typeof settlement.winnerPayout === 'number') {
+    winnerPayout = settlement.winnerPayout;
+  } else if (betAmt > 0) {
+    // Estimate: pot minus 10% fee
+    winnerPayout = Math.round(betAmt * 2 * 0.9);
+  }
+  setTimeout(() => showWinModal(wName, reason, iLocalWin, betAmt, winnerPayout), 400);
 }
 
 /* ── UI helpers ── */
@@ -1185,7 +1233,7 @@ function onTurnTimeout() {
 }
 
 /* ── Win modal ── */
-function showWinModal(name, reason, iLocalWin = false, betAmt = 0) {
+function showWinModal(name, reason, iLocalWin = false, betAmt = 0, winnerPayout = 0) {
   document.getElementById('winTitle').textContent = name + ' Wins!';
   document.getElementById('winSub').textContent   = reason + '. Well played!';
   document.getElementById('ms-moves').textContent = G.moveCount;
@@ -1193,10 +1241,11 @@ function showWinModal(name, reason, iLocalWin = false, betAmt = 0) {
   document.getElementById('ms-captured').textContent = G.captured[BLACK] + G.captured[WHITE];
 
   // Show win prize amount only when the local player won and there was a bet
+  // winnerPayout is pot − 10% fee (e.g. bet=10 → pot=20 → payout=18)
   const prizeWrap = document.getElementById('ms-prize-wrap');
   const prizeEl   = document.getElementById('ms-prize');
   if (prizeWrap && prizeEl) {
-    const prize = betAmt > 0 ? betAmt * 2 : 0;
+    const prize = winnerPayout > 0 ? winnerPayout : (betAmt > 0 ? Math.round(betAmt * 2 * 0.9) : 0);
     if (iLocalWin && prize > 0) {
       prizeEl.textContent = prize.toLocaleString();
       prizeWrap.classList.remove('hidden');

@@ -473,7 +473,10 @@ Socket.on('game_over', (msg) => {
       winnerColor = window.activeOnlineGame.myColor === 'black' ? 2 : 1;
     }
   }
-  endGame(winnerColor, msg.reason, true);
+
+  // Pass settlement data so win modal shows correct payout (pot − 10% fee)
+  const settlement = msg.settlement || null;
+  endGame(winnerColor, msg.reason, true, settlement);
 });
 
 // Update local cache and re-render when any player's data changes (balance, wins, etc.)
