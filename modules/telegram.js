@@ -69,10 +69,14 @@ export function populateTelegramUser(onComplete) {
     const initials = name.slice(0, 2).toUpperCase();
     avatarEl.textContent = initials || '♟';
 
-    // Use phone number as stable unique ID (strip non-digits, prefix with "ph_")
-    const cleanPhone = String(window.DAMA_PHONE).replace(/\D/g, '');
+    // Use phone number as stable unique ID.
+    // Strip to last 10 digits (local format) to keep ID stable regardless
+    // of whether phone was passed as 0909095880 or 251909095880.
+    const rawPhone  = String(window.DAMA_PHONE).replace(/\D/g, '');
+    // Take last 10 digits — covers both "0909095880" and "251909095880"
+    const localPhone = rawPhone.slice(-10);
     window.tgUserName  = name;
-    window.tgUserId    = 'ph_' + cleanPhone;
+    window.tgUserId    = 'ph_' + localPhone;
     window.tgUserPhoto = null;
 
     // Pre-seed balance from URL param (real balance will update async via urlAuth)
