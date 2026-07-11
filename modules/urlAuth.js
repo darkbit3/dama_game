@@ -8,6 +8,9 @@
 
 const REQUIRED_PARAMS = ['token', 'launch'];
 const STORAGE_KEY     = 'dama_url_auth';
+const BALANCE_FETCH_TIMEOUT_MS = 25000; // generous timeout for cold backend wakeups
+const WAKEUP_UI_DELAY_MS       = 5000;
+const LOADER_SUBTITLE_SELECTOR  = '.loader-subtitle';
 
 /**
  * Read token + launch from the current URL.
@@ -158,14 +161,30 @@ function setBalanceLoading(loading) {
   if (btn) { btn.classList.toggle('spinning', loading); btn.disabled = loading; }
 }
 
+function setLoaderSubtitle(text) {
+  const subtitle = document.querySelector(LOADER_SUBTITLE_SELECTOR);
+  if (subtitle) subtitle.textContent = text;
+}
+
+function showWakingUpMessage(show) {
+  const subtitle = document.querySelector(LOADER_SUBTITLE_SELECTOR);
+  if (!subtitle) return;
+  if (show) {
+    subtitle.textContent = 'Waking up the server, this may take a moment...';
+  } else {
+    subtitle.textContent = 'Ethiopian Checkers';
+  }
+}
+
 /* ── Single call to dama-backend /player-balance ─────────────── */
 async function fetchPlayerBalance(token, launch) {
+  console.info('[urlAuth] fetchPlayerBalance timeout set to', BALANCE_FETCH_TIMEOUT_MS, 'ms');
   const { apiUrl } = await import('./socket.js');
   const res = await fetch(`${apiUrl}/player-balance`, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({ token, launch }),
-    signal:  AbortSignal.timeout(8000),
+    signal:  AbortSignal.timeout(BALANCE_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const json = await res.json();
@@ -219,9 +238,12 @@ export function initUrlAuth() {
     window.DAMA_BALANCE  = null;
 
     setBalanceLoading(true);
+    const wakeTimer = setTimeout(() => showWakingUpMessage(true), WAKEUP_UI_DELAY_MS);
 
     fetchPlayerBalance(params.token, params.launch)
       .then(data => {
+        clearTimeout(wakeTimer);
+        showWakingUpMessage(false);
         setBalanceLoading(false);
 
         if (data.balance !== null) {
@@ -248,6 +270,8 @@ export function initUrlAuth() {
         resolve(params);
       })
       .catch(err => {
+        clearTimeout(wakeTimer);
+        showWakingUpMessage(false);
         setBalanceLoading(false);
         console.error('[urlAuth] Failed to fetch player balance:', err.message);
         showOfflineOverlay();
