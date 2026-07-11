@@ -11,6 +11,7 @@ const STORAGE_KEY     = 'dama_url_auth';
 const BALANCE_FETCH_TIMEOUT_MS = 25000; // generous timeout for cold backend wakeups
 const WAKEUP_UI_DELAY_MS       = 5000;
 const LOADER_SUBTITLE_SELECTOR  = '.loader-subtitle';
+const BALANCE_FALLBACK_PARAM    = 'balance';
 
 /**
  * Read token + launch from the current URL.
@@ -19,13 +20,28 @@ const LOADER_SUBTITLE_SELECTOR  = '.loader-subtitle';
 function readParams() {
   const p = new URLSearchParams(window.location.search);
   return {
-    token:  p.get('token')  || null,
-    launch: p.get('launch') || null,
+    token:   p.get('token')   || null,
+    launch:  p.get('launch')  || null,
+    balance: p.get(BALANCE_FALLBACK_PARAM) || null,
   };
 }
 
 function isValid(params) {
   return REQUIRED_PARAMS.every(k => !!params[k]);
+}
+
+function getFallbackBalance(params = null) {
+  const raw = params?.balance ?? readParams().balance;
+  if (raw === null || raw === undefined || raw === '') return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
+export function shouldTreatBalanceFetchAsNonBlocking(reason) {
+  if (typeof reason === 'number') return [401, 403].includes(reason);
+  const text = String(reason || '').toLowerCase();
+  return [401, 403].some(code => text.includes(String(code)))
+    || /unauthorized|forbidden|invalid launch|invalid or inactive token/i.test(text);
 }
 
 /* ── Blocking overlays ───────────────────────────────────────── */
@@ -186,7 +202,11 @@ async function fetchPlayerBalance(token, launch) {
     body:    JSON.stringify({ token, launch }),
     signal:  AbortSignal.timeout(BALANCE_FETCH_TIMEOUT_MS),
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    const err = new Error(`HTTP ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
   const json = await res.json();
   const data = json?.data ?? json;
   return {
@@ -202,12 +222,19 @@ export async function refreshBalance(silent = false) {
   })();
   if (!auth?.token || !auth?.launch) return;
 
+  const fallbackBalance = getFallbackBalance(readParams());
+
   if (!silent) setBalanceLoading(true);
   try {
     const data = await fetchPlayerBalance(auth.token, auth.launch);
     if (data.balance !== null) updateBalanceDisplay(data.balance);
     if (data.username) window.DAMA_USERNAME = data.username;
   } catch (err) {
+    if (shouldTreatBalanceFetchAsNonBlocking(err)) {
+      if (fallbackBalance !== null) updateBalanceDisplay(fallbackBalance);
+      console.info('[urlAuth] Balance refresh skipped after auth rejection:', err.message);
+      return;
+    }
     console.warn('[urlAuth] refreshBalance failed:', err.message);
     if (!silent) showOfflineOverlay();
   } finally {
@@ -219,6 +246,7 @@ export async function refreshBalance(silent = false) {
 export function initUrlAuth() {
   return new Promise((resolve) => {
     const params = readParams();
+    const fallbackBalance = getFallbackBalance(params);
 
     if (!isValid(params)) {
       showInvalidOverlay(REQUIRED_PARAMS.filter(k => !params[k]));
@@ -273,6 +301,14 @@ export function initUrlAuth() {
         clearTimeout(wakeTimer);
         showWakingUpMessage(false);
         setBalanceLoading(false);
+
+        if (shouldTreatBalanceFetchAsNonBlocking(err)) {
+          if (fallbackBalance !== null) updateBalanceDisplay(fallbackBalance);
+          console.info('[urlAuth] Balance lookup skipped after auth rejection:', err.message);
+          resolve(params);
+          return;
+        }
+
         console.error('[urlAuth] Failed to fetch player balance:', err.message);
         showOfflineOverlay();
         // Promise never resolves — app stays blocked
