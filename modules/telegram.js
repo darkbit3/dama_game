@@ -4,7 +4,8 @@
             haptic feedback, screen navigation
 ═══════════════════════════════════════════════════ */
 
-export const twa = window.Telegram?.WebApp;
+const telegramGlobal = typeof globalThis !== 'undefined' ? globalThis : undefined;
+export const twa = telegramGlobal?.Telegram?.WebApp;
 
 /* ── Version guard ── */
 export function twaAtLeast(required) {

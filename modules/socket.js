@@ -8,13 +8,23 @@ const _sendQueue = [];   // messages queued while socket is not yet open
 
 import { BACKEND_URL } from '../config.js';
 
+const windowRef = typeof window !== 'undefined' ? window : globalThis;
+const safeStorage = {
+  getItem() { return null; },
+  setItem() {},
+  removeItem() {},
+  clear() {},
+};
+const localStorageRef = typeof windowRef.localStorage !== 'undefined' ? windowRef.localStorage : safeStorage;
+const sessionStorageRef = typeof windowRef.sessionStorage !== 'undefined' ? windowRef.sessionStorage : safeStorage;
+
 // Determine backend server URL
-const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const isLocal = windowRef.location?.hostname === 'localhost' || windowRef.location?.hostname === '127.0.0.1';
 
 // If a BACKEND_URL is set in config.js, use it; otherwise auto-detect.
 const _backendBase = BACKEND_URL
   ? BACKEND_URL.replace(/\/$/, '')
-  : (isLocal ? 'http://localhost:5000' : `${window.location.protocol}//${window.location.host}`);
+  : (isLocal ? 'http://localhost:5000' : `${windowRef.location?.protocol || 'http:'}//${windowRef.location?.host || 'localhost'}`);
 
 const wsUrl = _backendBase.replace(/^http/, 'ws');
 export const apiUrl = _backendBase + '/api';
@@ -24,10 +34,10 @@ export const apiUrl = _backendBase + '/api';
 // sessionStorage is isolated per-tab, so two tabs of the same browser get different
 // tokens, and a brand-new device also gets a fresh token.
 function getOrCreateSessionToken() {
-  let token = sessionStorage.getItem('dama_session_token');
+  let token = sessionStorageRef.getItem('dama_session_token');
   if (!token) {
     token = 'st_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 10);
-    sessionStorage.setItem('dama_session_token', token);
+    sessionStorageRef.setItem('dama_session_token', token);
   }
   return token;
 }
@@ -59,8 +69,8 @@ export const Socket = {
         reconnectTimer = null;
       }
 
-      const apiToken = window.DAMA_API_TOKEN
-        || localStorage.getItem('dama_api_token')
+      const apiToken = windowRef.DAMA_API_TOKEN
+        || localStorageRef.getItem('dama_api_token')
         || null;
 
       this.send('join', { playerId, sessionToken, ...(apiToken ? { apiToken } : {}) });

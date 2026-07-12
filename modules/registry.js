@@ -1,9 +1,18 @@
 import { apiUrl } from './socket.js';
 
+const windowRef = typeof window !== 'undefined' ? window : globalThis;
+const safeStorage = {
+  getItem() { return null; },
+  setItem() {},
+  removeItem() {},
+  clear() {},
+};
+const localStorageRef = typeof windowRef.localStorage !== 'undefined' ? windowRef.localStorage : safeStorage;
+
 const KEY = 'dama_players_v1';
 
 export async function fetchWithToken(url, options = {}) {
-  const authReady = window.DAMA_AUTH_READY;
+  const authReady = windowRef.DAMA_AUTH_READY;
   if (authReady) {
     try {
       await authReady;
@@ -12,7 +21,7 @@ export async function fetchWithToken(url, options = {}) {
     }
   }
 
-  const apiToken = window.DAMA_API_TOKEN || localStorage.getItem('dama_api_token') || null;
+  const apiToken = windowRef.DAMA_API_TOKEN || localStorageRef.getItem('dama_api_token') || null;
   if (!apiToken) {
     throw new Error('Authentication token is not ready yet.');
   }
@@ -23,12 +32,12 @@ export async function fetchWithToken(url, options = {}) {
 }
 
 function load() {
-  try { return JSON.parse(localStorage.getItem(KEY)) || []; }
+  try { return JSON.parse(localStorageRef.getItem(KEY)) || []; }
   catch { return []; }
 }
 
 function save(list) {
-  try { localStorage.setItem(KEY, JSON.stringify(list)); } catch {}
+  try { localStorageRef.setItem(KEY, JSON.stringify(list)); } catch {}
 }
 
 const THEME_IDS = ['classic','fire','ocean','forest','royal','gold'];
@@ -51,7 +60,7 @@ function register(player) {
     wins:         0,
     losses:       0,
     draws:        0,
-    balance:      window.DAMA_BALANCE ?? player.balance ?? 500,
+    balance:      windowRef.DAMA_BALANCE ?? player.balance ?? 500,
     bet:          player.bet || 100,
     pieceThemeId: player.pieceThemeId || randomThemeId(),
     lastSeen:     Date.now(),
@@ -86,7 +95,7 @@ async function syncWithBackend(player) {
         id: player.id,
         name: player.name,
         photo: player.photo,
-        phone: window.DAMA_PHONE || null,
+        phone: windowRef.DAMA_PHONE || null,
         bet: player.bet,
         pieceThemeId: player.pieceThemeId,
         isDemo: !!player.isDemo,
@@ -105,7 +114,7 @@ async function syncWithBackend(player) {
           // ── Never overwrite balance from Dama DB for the current user ──
           // The real balance comes from the owner backend via urlAuth.refreshBalance()
           balance: list[idx].isMe
-            ? (window.DAMA_BALANCE ?? list[idx].balance ?? dbPlayer.balance)
+            ? (windowRef.DAMA_BALANCE ?? list[idx].balance ?? dbPlayer.balance)
             : dbPlayer.balance,
           wins:       dbPlayer.wins,
           losses:     dbPlayer.losses,
@@ -114,8 +123,8 @@ async function syncWithBackend(player) {
           lastDevice: dbPlayer.last_device,
         };
         save(list);
-        if (typeof window.renderPlayerList === 'function') {
-          window.renderPlayerList();
+        if (typeof windowRef.renderPlayerList === 'function') {
+          windowRef.renderPlayerList();
         }
       }
     }
@@ -207,7 +216,7 @@ async function fetchPlayers() {
           draws:      dp.draws,
           // ── For current user: always use owner-backend balance, not Dama DB ──
           balance:    isMe
-            ? (window.DAMA_BALANCE ?? local?.balance ?? dp.balance)
+            ? (windowRef.DAMA_BALANCE ?? local?.balance ?? dp.balance)
             : dp.balance,
           bet:        dp.bet,
           pieceThemeId: dp.piece_theme,
