@@ -1,5 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { shouldTreatBalanceFetchAsNonBlocking } from '../modules/urlAuth.js';
+import { createAuthGate, shouldTreatBalanceFetchAsNonBlocking } from '../modules/urlAuth.js';
+
+describe('createAuthGate', () => {
+  it('settles once and preserves the first outcome', async () => {
+    const gate = createAuthGate();
+    const seen = [];
+
+    gate.promise.then(
+      value => seen.push(['resolve', value]),
+      error => seen.push(['reject', error.message || error])
+    );
+
+    gate.resolve(true);
+    gate.reject(new Error('should not change state'));
+
+    await Promise.resolve();
+
+    expect(seen).toEqual([['resolve', true]]);
+  });
+});
 
 describe('shouldTreatBalanceFetchAsNonBlocking', () => {
   it('treats auth failures as non-blocking', () => {

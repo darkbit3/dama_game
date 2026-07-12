@@ -6,11 +6,11 @@
 ═══════════════════════════════════════════════════ */
 
 import { tgHaptic } from './telegram.js';
-import { PlayerRegistry, seedDemoPlayers } from './registry.js';
+import { PlayerRegistry, seedDemoPlayers, fetchWithToken } from './registry.js';
 import { getState, setState } from './state.js';
 
 /* ── Loading screen ── */
-export function initLoader(onDone) {
+export function initLoader(onDone, waitFor = null) {
   const fill    = document.getElementById('progressFill');
   const percent = document.getElementById('loaderPercent');
   const loader  = document.getElementById('loader');
@@ -25,6 +25,30 @@ export function initLoader(onDone) {
   const steps    = duration / interval;
   let step = 0;
 
+  let progressComplete = false;
+  let authSettled = false;
+  let finished = false;
+
+  function finishLoader(showMenu) {
+    if (finished) return;
+    finished = true;
+    clearInterval(timer);
+    setTimeout(() => {
+      loader.classList.add('fade-out');
+      setTimeout(() => {
+        loader.style.display = 'none';
+        if (showMenu) {
+          menu.classList.remove('hidden');
+          if (typeof onDone === 'function') onDone();
+        }
+      }, 700);
+    }, 250);
+  }
+
+  function maybeFinishLoader() {
+    if (progressComplete && authSettled) finishLoader(true);
+  }
+
   const timer = setInterval(() => {
     step++;
     const progress = Math.min(100, Math.round(ease(step / steps) * 100));
@@ -32,17 +56,21 @@ export function initLoader(onDone) {
     percent.textContent = progress + '%';
 
     if (progress >= 100) {
-      clearInterval(timer);
-      setTimeout(() => {
-        loader.classList.add('fade-out');
-        setTimeout(() => {
-          loader.style.display = 'none';
-          menu.classList.remove('hidden');
-          if (typeof onDone === 'function') onDone();
-        }, 700);
-      }, 250);
+      progressComplete = true;
+      maybeFinishLoader();
     }
   }, interval);
+
+  if (waitFor) {
+    Promise.resolve(waitFor).then(() => {
+      authSettled = true;
+      maybeFinishLoader();
+    }, () => {
+      finishLoader(false);
+    });
+  } else {
+    authSettled = true;
+  }
 }
 
 /* ── Particles ── */
@@ -241,10 +269,7 @@ async function fetchOwnedFromBackend() {
   if (!getState('tgUserId')) return;
   try {
     const { apiUrl } = await import('./socket.js');
-    const apiToken = getState('damaApiToken') || localStorage.getItem('dama_api_token') || '';
-    const res = await fetch(`${apiUrl}/players/${getState('tgUserId')}/owned`, {
-      headers: { 'X-API-Token': apiToken },
-    });
+    const res = await fetchWithToken(`${apiUrl}/players/${getState('tgUserId')}/owned`);
     if (res.ok) {
       const data = await res.json();
       const items = data.data || [];

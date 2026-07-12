@@ -13,6 +13,37 @@ const WAKEUP_UI_DELAY_MS       = 5000;
 const LOADER_SUBTITLE_SELECTOR  = '.loader-subtitle';
 const BALANCE_FALLBACK_PARAM    = 'balance';
 
+let _authGate = null;
+
+export function createAuthGate() {
+  let settled = false;
+  let resolveFn;
+  let rejectFn;
+  const promise = new Promise((resolve, reject) => {
+    resolveFn = resolve;
+    rejectFn = reject;
+  });
+
+  return {
+    promise,
+    resolve(value) {
+      if (settled) return;
+      settled = true;
+      resolveFn(value);
+    },
+    reject(reason) {
+      if (settled) return;
+      settled = true;
+      rejectFn(reason);
+    },
+  };
+}
+
+export function getAuthGate() {
+  if (!_authGate) _authGate = createAuthGate();
+  return _authGate;
+}
+
 /**
  * Read token + launch from the current URL.
  * No phone, username, or balance is ever expected in the URL.
@@ -46,8 +77,10 @@ export function shouldTreatBalanceFetchAsNonBlocking(reason) {
 
 /* ── Blocking overlays ───────────────────────────────────────── */
 
-function showInvalidOverlay(missing) {
+function showInvalidOverlay(missing, options = {}) {
   document.body.style.overflow = 'hidden';
+  const title = options.title || 'Access Denied';
+  const description = options.description || 'This app requires a valid access link.<br>Please open the correct URL provided by your administrator.';
 
   const overlay = document.createElement('div');
   overlay.id = 'urlAuthBlock';
@@ -81,11 +114,10 @@ function showInvalidOverlay(missing) {
       font-family:'Cinzel',serif;font-size:1.4rem;font-weight:900;
       background:linear-gradient(180deg,#fff 0%,#f0c94a 55%,#d4a017 100%);
       -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">
-      Access Denied
+      ${title}
     </div>
     <div class="auth-desc" style="color:rgba(245,230,200,.7);font-size:.9rem;max-width:300px;line-height:1.65;">
-      This app requires a valid access link.<br>
-      Please open the correct URL provided by your administrator.
+      ${description}
     </div>
     <div class="auth-missing" style="
       background:rgba(231,76,60,.12);border:1px solid rgba(231,76,60,.3);
@@ -244,12 +276,16 @@ export async function refreshBalance(silent = false) {
 
 /* ── initUrlAuth — called once at app startup ─────────────────── */
 export function initUrlAuth() {
+  const gate = getAuthGate();
+  window.DAMA_AUTH_READY = gate.promise;
+
   return new Promise((resolve) => {
     const params = readParams();
     const fallbackBalance = getFallbackBalance(params);
 
     if (!isValid(params)) {
       showInvalidOverlay(REQUIRED_PARAMS.filter(k => !params[k]));
+      gate.reject(new Error(`Missing auth parameters: ${REQUIRED_PARAMS.filter(k => !params[k]).join(', ')}`));
       // Promise never resolves — app stays blocked
       return;
     }
@@ -284,6 +320,8 @@ export function initUrlAuth() {
           if (nameEl) nameEl.textContent = data.username;
         }
 
+        gate.resolve(true);
+
         // Clean the URL — keep only token + launch, nothing else
         try {
           const url   = new URL(window.location.href);
@@ -302,8 +340,14 @@ export function initUrlAuth() {
         showWakingUpMessage(false);
         setBalanceLoading(false);
 
+        gate.reject(err);
+
         if (shouldTreatBalanceFetchAsNonBlocking(err)) {
           if (fallbackBalance !== null) updateBalanceDisplay(fallbackBalance);
+          showInvalidOverlay(['token', 'launch'], {
+            title: 'Access Denied',
+            description: 'This access link is invalid or expired.<br>Please request a fresh link from your administrator.',
+          });
           console.info('[urlAuth] Balance lookup skipped after auth rejection:', err.message);
           resolve(params);
           return;

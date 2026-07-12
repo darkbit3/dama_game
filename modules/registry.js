@@ -2,10 +2,23 @@ import { apiUrl } from './socket.js';
 
 const KEY = 'dama_players_v1';
 
-async function fetchWithToken(url, options = {}) {
+export async function fetchWithToken(url, options = {}) {
+  const authReady = window.DAMA_AUTH_READY;
+  if (authReady) {
+    try {
+      await authReady;
+    } catch (err) {
+      throw new Error(`Authentication failed before request: ${err?.message || err}`);
+    }
+  }
+
   const apiToken = window.DAMA_API_TOKEN || localStorage.getItem('dama_api_token') || null;
+  if (!apiToken) {
+    throw new Error('Authentication token is not ready yet.');
+  }
+
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-  if (apiToken) headers['X-API-Token'] = apiToken;
+  headers['X-API-Token'] = apiToken;
   return fetch(url, { ...options, headers });
 }
 

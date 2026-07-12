@@ -224,7 +224,7 @@ initLoader(() => {
   initCountdown();
   initBetBar();
   initColorPicker();
-});
+}, window.DAMA_AUTH_READY || Promise.resolve(true));
 
 /* ── 4. Button wiring ── */
 function initApp() {
