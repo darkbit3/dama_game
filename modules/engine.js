@@ -28,6 +28,75 @@ export { EMPTY, BLACK, WHITE, B_KING, W_KING,
 /* ── Game State ── */
 export let G = {};
 
+let rematchTimer = null;
+let rematchPrompt = null;
+
+function clearRematchUi() {
+  if (rematchTimer) { clearTimeout(rematchTimer); rematchTimer = null; }
+  if (rematchPrompt) { rematchPrompt.remove(); rematchPrompt = null; }
+  const btn = document.getElementById('playAgainBtn');
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = `<span>↺</span> Play Again <div class="btn-shine"></div>`;
+  }
+}
+
+function setRematchWaitingState(message) {
+  const btn = document.getElementById('playAgainBtn');
+  const sub = document.getElementById('winSub');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span>⏳</span> ${message} <div class="btn-shine"></div>`;
+  }
+  if (sub) sub.textContent = message;
+}
+
+function hideRematchPrompt() {
+  if (rematchPrompt) { rematchPrompt.remove(); rematchPrompt = null; }
+}
+
+function showRematchPrompt(opponentName, onAccept, onDecline) {
+  hideRematchPrompt();
+  const overlay = document.createElement('div');
+  overlay.id = 'rematchPrompt';
+  overlay.style.cssText = [
+    'position:fixed','inset:0','z-index:99999','background:rgba(0,0,0,.72)',
+    'display:flex','align-items:center','justify-content:center','padding:20px'
+  ].join(';');
+  overlay.innerHTML = `
+    <div style="background:#1f1404;border:1px solid rgba(212,160,23,.35);border-radius:16px;padding:24px 24px 20px;max-width:320px;width:100%;box-shadow:0 10px 35px rgba(0,0,0,.35);text-align:center;color:#f8e7b3;">
+      <div style="font-size:2rem;margin-bottom:8px;">🔁</div>
+      <div style="font-family:'Cinzel',serif;font-size:1.15rem;font-weight:900;margin-bottom:8px;">Rematch request</div>
+      <div style="font-size:.95rem;line-height:1.5;margin-bottom:16px;">${opponentName || 'Your opponent'} wants a rematch.</div>
+      <div style="display:flex;gap:10px;justify-content:center;">
+        <button id="rematchAcceptBtn" style="background:#d4a017;color:#000;border:none;border-radius:999px;padding:10px 16px;font-weight:700;cursor:pointer;">Accept</button>
+        <button id="rematchDeclineBtn" style="background:transparent;color:#f8e7b3;border:1px solid rgba(248,231,179,.35);border-radius:999px;padding:10px 16px;font-weight:700;cursor:pointer;">Decline</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  rematchPrompt = overlay;
+  document.getElementById('rematchAcceptBtn')?.addEventListener('click', () => {
+    hideRematchPrompt();
+    if (typeof onAccept === 'function') onAccept();
+  });
+  document.getElementById('rematchDeclineBtn')?.addEventListener('click', () => {
+    hideRematchPrompt();
+    if (typeof onDecline === 'function') onDecline();
+  });
+}
+
+function startRematchGame() {
+  const rematchGameId = `REM-${Date.now().toString(36).slice(-6).toUpperCase()}`;
+  setState('activeOnlineGame', {
+    gameId: rematchGameId,
+    myColor: G.myColor || 'black',
+    turn: 'black',
+    betAmount: G.betAmount || getState('currentBet') || 0,
+    history: [],
+  });
+  startGame('pvp', G.opponent);
+}
+
 export function freshState() {
   return {
     debug: true,
@@ -837,11 +906,33 @@ function showWinModal(name, reason, iLocalWin = false, betAmt = 0, winnerPayout 
   modal.classList.remove('hidden');
   requestAnimationFrame(() => modal.classList.add('modal-show'));
 
-  let remaining = 10;
   const playAgainBtn = document.getElementById('playAgainBtn');
   const menuBtn      = document.getElementById('menuBtn2');
   const originalLabel = playAgainBtn?.innerHTML || '';
 
+  clearRematchUi();
+
+  if (G.isOnlinePvP && G.opponent?.id) {
+    const updateLabel = () => {
+      if (playAgainBtn) playAgainBtn.innerHTML = `<span>↺</span> Play Again <div class="btn-shine"></div>`;
+    };
+    updateLabel();
+    const onClick = () => {
+      clearRematchUi();
+      requestRematch();
+    };
+    playAgainBtn?.addEventListener('click', onClick, { once: true });
+    menuBtn?.addEventListener('click', () => {
+      hideRematchPrompt();
+      modal.classList.add('hidden'); modal.classList.remove('modal-show');
+      clearInterval(G.timerInterval);
+      showScreen('mainMenu');
+      renderPlayerList();
+    });
+    return;
+  }
+
+  let remaining = 10;
   function updateAutoLabel() {
     if (playAgainBtn)
       playAgainBtn.innerHTML = `<span>↺</span> Play Again <span style="opacity:.6;font-size:.8em;">(${remaining}s)</span>`;
@@ -868,6 +959,57 @@ function showWinModal(name, reason, iLocalWin = false, betAmt = 0, winnerPayout 
       renderPlayerList();
     }
   }, 1000);
+}
+
+export function requestRematch() {
+  if (!G.isOnlinePvP || !G.opponent?.id || !getState('tgUserId')) return;
+  const opponentId = G.opponent.id;
+  const gameId = G.gameId;
+  setRematchWaitingState('Waiting for opponent to accept…');
+  Socket.send('rematch_request', { opponentId, gameId, requesterId: getState('tgUserId') });
+  if (rematchTimer) clearTimeout(rematchTimer);
+  rematchTimer = setTimeout(() => {
+    rematchTimer = null;
+    handleRematchDeclined({ reason: 'timeout' });
+  }, 45000);
+}
+
+export function handleIncomingRematchRequest(msg) {
+  const requesterId = msg?.requesterId || msg?.playerId || msg?.opponentId || null;
+  if (!requesterId) return;
+  const displayName = msg?.requesterName || G.opponent?.name || 'Your opponent';
+  showRematchPrompt(displayName, () => {
+    Socket.send('rematch_accepted', { opponentId: requesterId, gameId: msg?.gameId || G.gameId, accepterId: getState('tgUserId') });
+    startRematchGame();
+  }, () => {
+    Socket.send('rematch_declined', { opponentId: requesterId, gameId: msg?.gameId || G.gameId, declinerId: getState('tgUserId') });
+    hideRematchPrompt();
+    const status = document.getElementById('gameStatus');
+    if (status) status.textContent = 'Rematch declined.';
+    showScreen('mainMenu');
+    renderPlayerList();
+  });
+}
+
+export function handleRematchAccepted(msg) {
+  if (rematchTimer) { clearTimeout(rematchTimer); rematchTimer = null; }
+  clearRematchUi();
+  hideRematchPrompt();
+  const modal = document.getElementById('winModal');
+  if (modal) { modal.classList.add('hidden'); modal.classList.remove('modal-show'); }
+  startRematchGame();
+}
+
+export function handleRematchDeclined(msg) {
+  if (rematchTimer) { clearTimeout(rematchTimer); rematchTimer = null; }
+  clearRematchUi();
+  hideRematchPrompt();
+  const modal = document.getElementById('winModal');
+  if (modal) { modal.classList.add('hidden'); modal.classList.remove('modal-show'); }
+  const status = document.getElementById('gameStatus');
+  if (status) status.textContent = msg?.reason === 'timeout' ? 'Opponent did not respond to the rematch request.' : 'Opponent declined the rematch.';
+  showScreen('mainMenu');
+  renderPlayerList();
 }
 
 /* ── Undo ── */

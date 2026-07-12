@@ -7,7 +7,7 @@
 import { initTelegram, populateTelegramUser, tgHaptic, showScreen, initBackButton } from './modules/telegram.js';
 import { initLoader, initParticles, initBetBar, initColorPicker, initCountdown, renderPlayerList, ripple, injectRippleStyle, PIECE_THEMES } from './modules/ui.js';
 import { PlayerRegistry } from './modules/registry.js';
-import { startGame, G, executeMove, endGame } from './modules/engine.js';
+import { startGame, G, executeMove, endGame, requestRematch, handleIncomingRematchRequest, handleRematchAccepted, handleRematchDeclined } from './modules/engine.js';
 import { Socket } from './modules/socket.js';
 import { initErrorBoundary } from './modules/errorBoundary.js';
 import { initConnectionMonitor } from './modules/connection.js';
@@ -420,6 +420,18 @@ Socket.on('game_over', (msg) => {
   }
   endGame(winnerColor, msg.reason, true, msg.settlement || null);
   setTimeout(() => refreshBalance(true), 800);
+});
+
+Socket.on('rematch_request', (msg) => {
+  handleIncomingRematchRequest(msg);
+});
+
+Socket.on('rematch_accepted', (msg) => {
+  handleRematchAccepted(msg);
+});
+
+Socket.on('rematch_declined', (msg) => {
+  handleRematchDeclined(msg);
 });
 
 Socket.on('player_updated', (msg) => {

@@ -44,6 +44,11 @@ export function getAuthGate() {
   return _authGate;
 }
 
+export function resetAuthGate() {
+  _authGate = createAuthGate();
+  return _authGate;
+}
+
 /**
  * Read token + launch from the current URL.
  * No phone, username, or balance is ever expected in the URL.
@@ -188,6 +193,49 @@ function showOfflineOverlay() {
   else document.addEventListener('DOMContentLoaded', mount);
 }
 
+function showAccountLoadFailureOverlay(onRetry) {
+  if (document.getElementById('accountLoadBlock')) return;
+  document.body.style.overflow = 'hidden';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'accountLoadBlock';
+  overlay.style.cssText = [
+    'position:fixed', 'inset:0', 'z-index:99999',
+    'background:radial-gradient(ellipse at center,#1a0f00 0%,#0d0d0d 70%)',
+    'display:flex', 'flex-direction:column',
+    'align-items:center', 'justify-content:center',
+    'gap:16px', 'padding:32px 24px', 'text-align:center',
+  ].join(';');
+
+  overlay.innerHTML = `
+    <div style="font-size:3.2rem;line-height:1;margin-bottom:4px;">⚠️</div>
+    <div style="font-family:'Cinzel',serif;font-size:1.3rem;font-weight:900;color:#f0c94a;">
+      Couldn't load your account
+    </div>
+    <div style="color:rgba(245,230,200,.75);font-size:.95rem;max-width:320px;line-height:1.6;">
+      We couldn't verify your account details from the backend.<br>
+      Please contact the admin or try again.
+    </div>
+    <button id="accountRetryBtn" style="
+      background:#d4a017;color:#000;border:none;border-radius:999px;
+      padding:12px 24px;font-weight:700;cursor:pointer;margin-top:8px;
+      font-family:inherit;box-shadow:0 4px 14px rgba(212,160,23,.3);">
+      ↻ Retry
+    </button>`;
+
+  const mount = () => {
+    const loader = document.getElementById('loader');
+    if (loader) loader.style.display = 'none';
+    document.body.appendChild(overlay);
+    document.getElementById('accountRetryBtn')?.addEventListener('click', () => {
+      overlay.remove();
+      if (typeof onRetry === 'function') onRetry();
+    });
+  };
+  if (document.body) mount();
+  else document.addEventListener('DOMContentLoaded', mount);
+}
+
 /* ── Balance display / spinner helpers ───────────────────────── */
 
 export function updateBalanceDisplay(balance) {
@@ -276,7 +324,7 @@ export async function refreshBalance(silent = false) {
 
 /* ── initUrlAuth — called once at app startup ─────────────────── */
 export function initUrlAuth() {
-  const gate = getAuthGate();
+  const gate = resetAuthGate();
   window.DAMA_AUTH_READY = gate.promise;
 
   return new Promise((resolve) => {
@@ -320,6 +368,14 @@ export function initUrlAuth() {
           if (nameEl) nameEl.textContent = data.username;
         }
 
+        if (data.balance === null && data.username === null) {
+          const err = new Error('Could not load account data from backend.');
+          gate.reject(err);
+          showAccountLoadFailureOverlay(() => initUrlAuth());
+          resolve(params);
+          return;
+        }
+
         gate.resolve(true);
 
         // Clean the URL — keep only token + launch, nothing else
@@ -354,8 +410,8 @@ export function initUrlAuth() {
         }
 
         console.error('[urlAuth] Failed to fetch player balance:', err.message);
-        showOfflineOverlay();
-        // Promise never resolves — app stays blocked
+        showAccountLoadFailureOverlay(() => initUrlAuth());
+        resolve(params);
       });
   });
 }
