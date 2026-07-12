@@ -6,6 +6,8 @@
    ever in the URL or in client-side logic.
 ═══════════════════════════════════════════════════ */
 
+import { showAuthError, hideAuthError } from './authError.js';
+
 const REQUIRED_PARAMS = ['token', 'launch'];
 const STORAGE_KEY     = 'dama_url_auth';
 const BALANCE_FETCH_TIMEOUT_MS = 25000; // generous timeout for cold backend wakeups
@@ -194,52 +196,16 @@ function showOfflineOverlay() {
 }
 
 function showAccountLoadFailureOverlay(onRetry) {
-  if (document.getElementById('accountLoadBlock')) return;
-  document.body.style.overflow = 'hidden';
-
-  const overlay = document.createElement('div');
-  overlay.id = 'accountLoadBlock';
-  overlay.style.cssText = [
-    'position:fixed', 'inset:0', 'z-index:99999',
-    'background:radial-gradient(ellipse at center,#1a0f00 0%,#0d0d0d 70%)',
-    'display:flex', 'flex-direction:column',
-    'align-items:center', 'justify-content:center',
-    'gap:16px', 'padding:32px 24px', 'text-align:center',
-  ].join(';');
-
-  overlay.innerHTML = `
-    <div style="font-size:3.2rem;line-height:1;margin-bottom:4px;">⚠️</div>
-    <div style="font-family:'Cinzel',serif;font-size:1.3rem;font-weight:900;color:#f0c94a;">
-      Couldn't load your account
-    </div>
-    <div style="color:rgba(245,230,200,.75);font-size:.95rem;max-width:320px;line-height:1.6;">
-      We couldn't verify your account details from the backend.<br>
-      Please contact the admin or try again.
-    </div>
-    <button id="accountRetryBtn" style="
-      background:#d4a017;color:#000;border:none;border-radius:999px;
-      padding:12px 24px;font-weight:700;cursor:pointer;margin-top:8px;
-      font-family:inherit;box-shadow:0 4px 14px rgba(212,160,23,.3);">
-      ↻ Retry
-    </button>`;
-
-  const mount = () => {
-    const loader = document.getElementById('loader');
-    if (loader) loader.style.display = 'none';
-    document.body.appendChild(overlay);
-    document.getElementById('accountRetryBtn')?.addEventListener('click', () => {
-      overlay.remove();
-      if (typeof onRetry === 'function') onRetry();
-    });
-  };
-  if (document.body) mount();
-  else document.addEventListener('DOMContentLoaded', mount);
+  showAuthError('We couldn\'t verify your account details from the backend. Please contact the admin or try again.', onRetry);
 }
 
 /* ── Balance display / spinner helpers ───────────────────────── */
 
 export function updateBalanceDisplay(balance) {
-  if (balance === null || balance === undefined) return;
+  if (balance === null || balance === undefined) {
+    hideAuthError();
+    return;
+  }
   const balEl = document.getElementById('myBalance');
   if (balEl) balEl.textContent = Number(balance).toLocaleString();
   window.DAMA_BALANCE = balance;
@@ -308,8 +274,12 @@ export async function refreshBalance(silent = false) {
   if (!silent) setBalanceLoading(true);
   try {
     const data = await fetchPlayerBalance(auth.token, auth.launch);
-    if (data.balance !== null) updateBalanceDisplay(data.balance);
-    if (data.username) window.DAMA_USERNAME = data.username;
+    if (data.balance === null || data.username === null) {
+      showAuthError('We couldn\'t verify your account details from the backend. Please contact the admin or try again.', () => refreshBalance(false));
+      return;
+    }
+    updateBalanceDisplay(data.balance);
+    window.DAMA_USERNAME = data.username;
   } catch (err) {
     if (shouldTreatBalanceFetchAsNonBlocking(err)) {
       if (fallbackBalance !== null) updateBalanceDisplay(fallbackBalance);
@@ -317,7 +287,7 @@ export async function refreshBalance(silent = false) {
       return;
     }
     console.warn('[urlAuth] refreshBalance failed:', err.message);
-    if (!silent) showOfflineOverlay();
+    if (!silent) showAuthError('We couldn\'t connect to the game server. Please contact the admin or try again.', () => refreshBalance(false));
   } finally {
     if (!silent) setBalanceLoading(false);
   }
@@ -359,23 +329,18 @@ export function initUrlAuth() {
         showWakingUpMessage(false);
         setBalanceLoading(false);
 
-        if (data.balance !== null) {
-          updateBalanceDisplay(data.balance);
-        }
-
-        if (data.username) {
-          window.DAMA_USERNAME = data.username;
-          const nameEl = document.getElementById('tgName');
-          if (nameEl) nameEl.textContent = data.username;
-        }
-
-        if (data.balance === null && data.username === null) {
+        if (data.balance === null || data.username === null) {
           const err = new Error('Could not load account data from backend.');
           gate.reject(err);
           showAccountLoadFailureOverlay(() => initUrlAuth());
           resolve(params);
           return;
         }
+
+        updateBalanceDisplay(data.balance);
+        window.DAMA_USERNAME = data.username;
+        const nameEl = document.getElementById('tgName');
+        if (nameEl) nameEl.textContent = data.username;
 
         gate.resolve(true);
 

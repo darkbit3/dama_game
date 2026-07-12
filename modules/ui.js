@@ -133,19 +133,24 @@ function resetParticle(p, init, canvas) {
 }
 
 export function getCurrentBalanceValue() {
-  const balance = Number(window.DAMA_BALANCE ?? getState('damaBalance') ?? 0);
-  return Number.isFinite(balance) ? balance : 0;
+  const rawBalance = window.DAMA_BALANCE ?? getState('damaBalance');
+  if (rawBalance === null || rawBalance === undefined || rawBalance === '') return null;
+  const balance = Number(rawBalance);
+  return Number.isFinite(balance) ? balance : null;
 }
 
 export function getBetButtonDisabledState(amount, balance = null) {
-  const currentBalance = Number(balance ?? getCurrentBalanceValue());
-  return Number(amount) > currentBalance;
+  const currentBalance = balance ?? getCurrentBalanceValue();
+  if (currentBalance === null || currentBalance === undefined) return true;
+  return Number(amount) > Number(currentBalance);
 }
 
 export function updateBetBarState() {
   const balanceEl = document.getElementById('betBalanceValue');
   const balance = getCurrentBalanceValue();
-  if (balanceEl) balanceEl.textContent = Number(balance).toLocaleString();
+  if (balanceEl) {
+    balanceEl.textContent = balance === null ? '—' : Number(balance).toLocaleString();
+  }
 
   const presets = document.querySelectorAll('.bet-preset');
   presets.forEach(btn => {
@@ -702,7 +707,10 @@ export function renderPlayerList() {
     if (wEl)  wEl.textContent  = me.wins    || 0;
     if (lEl)  lEl.textContent  = me.losses  || 0;
     if (dEl)  dEl.textContent  = me.draws   || 0;
-    if (balEl) balEl.textContent = Number(getState('damaBalance') ?? me.balance ?? 500).toLocaleString();
+    if (balEl) {
+      const balance = getCurrentBalanceValue() ?? me.balance;
+      balEl.textContent = balance === null || balance === undefined ? '—' : Number(balance).toLocaleString();
+    }
   }
 
   function ballStyle(t) {

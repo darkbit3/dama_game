@@ -220,8 +220,8 @@ initLoader(() => {
     const balEl = document.getElementById('myBalance');
     if (balEl) {
       const me  = PlayerRegistry.load().find(p => p.id === getState('tgUserId'));
-      const bal = getState('damaBalance') ?? me?.balance ?? 500;
-      balEl.textContent = Number(bal).toLocaleString();
+      const bal = getCurrentBalanceValue() ?? me?.balance;
+      balEl.textContent = bal === null || bal === undefined ? '—' : Number(bal).toLocaleString();
     }
 
     renderPlayerList();
