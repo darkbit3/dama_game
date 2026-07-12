@@ -243,6 +243,7 @@ export function updateBalanceDisplay(balance) {
   const balEl = document.getElementById('myBalance');
   if (balEl) balEl.textContent = Number(balance).toLocaleString();
   window.DAMA_BALANCE = balance;
+  window.dispatchEvent(new CustomEvent('dama-balance-changed', { detail: balance }));
   if (window.tgUserId && window.PlayerRegistry) {
     const list = window.PlayerRegistry.load();
     const me   = list.find(p => p.id === window.tgUserId);

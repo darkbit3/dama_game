@@ -132,16 +132,59 @@ function resetParticle(p, init, canvas) {
   p.maxLife = Math.random() * 180 + 120;
 }
 
+export function getCurrentBalanceValue() {
+  const balance = Number(window.DAMA_BALANCE ?? getState('damaBalance') ?? 0);
+  return Number.isFinite(balance) ? balance : 0;
+}
+
+export function getBetButtonDisabledState(amount, balance = null) {
+  const currentBalance = Number(balance ?? getCurrentBalanceValue());
+  return Number(amount) > currentBalance;
+}
+
+export function updateBetBarState() {
+  const balanceEl = document.getElementById('betBalanceValue');
+  const balance = getCurrentBalanceValue();
+  if (balanceEl) balanceEl.textContent = Number(balance).toLocaleString();
+
+  const presets = document.querySelectorAll('.bet-preset');
+  presets.forEach(btn => {
+    const amount = Number(btn.dataset.amount || 0);
+    const disabled = getBetButtonDisabledState(amount, balance);
+    btn.disabled = disabled;
+    btn.classList.toggle('disabled', disabled);
+    btn.classList.toggle('active', !disabled && btn.classList.contains('active'));
+  });
+}
+
 /* ── Bet bar ── */
 export function initBetBar() {
-  const input   = document.getElementById('betInput');
   const presets = document.querySelectorAll('.bet-preset');
 
   // No default — player must explicitly select
   setState('currentBet', 0);
   setState('playerReady', false);
 
+  function clearReadySelection() {
+    presets.forEach(b => b.classList.remove('active'));
+    setState('currentBet', 0);
+    setState('playerReady', false);
+    const list = PlayerRegistry.load();
+    const me   = list.find(p => p.id === getState('tgUserId'));
+    if (me) { me.isReady = false; PlayerRegistry.save(list); }
+    if (getState('tgUserId')) {
+      PlayerRegistry.clearReadyOnBackend(getState('tgUserId')).then(() => renderPlayerList());
+    } else { renderPlayerList(); }
+  }
+
   function onBetSelected(amt) {
+    const currentBalance = getCurrentBalanceValue();
+    if (amt > currentBalance) {
+      alert('Insufficient balance for this bet.');
+      clearReadySelection();
+      return false;
+    }
+
     setState('currentBet', amt);
     setState('playerReady', true);
     const list = PlayerRegistry.load();
@@ -151,40 +194,23 @@ export function initBetBar() {
       PlayerRegistry.setReadyOnBackend(getState('tgUserId'), amt).then(() => renderPlayerList());
     } else { renderPlayerList(); }
     tgHaptic('light');
+    return true;
   }
 
   presets.forEach(btn => {
     btn.addEventListener('click', () => {
-      presets.forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
       const amt = parseInt(btn.dataset.amount, 10);
-      if (input) input.value = amt;
-      onBetSelected(amt);
+      if (Number.isNaN(amt)) return;
+      presets.forEach(b => b.classList.remove('active'));
+      if (!btn.disabled) {
+        btn.classList.add('active');
+        onBetSelected(amt);
+      }
     });
   });
 
-  if (input) {
-    input.addEventListener('input', () => {
-      const val = parseInt(input.value, 10);
-      if (!isNaN(val) && val > 0) {
-        presets.forEach(b => {
-          b.classList.toggle('active', parseInt(b.dataset.amount, 10) === val);
-        });
-        onBetSelected(val);
-      } else {
-        // Empty input — not ready
-        presets.forEach(b => b.classList.remove('active'));
-        setState('currentBet', 0);
-        setState('playerReady', false);
-        const list = PlayerRegistry.load();
-        const me   = list.find(p => p.id === getState('tgUserId'));
-        if (me) { me.isReady = false; PlayerRegistry.save(list); }
-        if (getState('tgUserId')) {
-          PlayerRegistry.clearReadyOnBackend(getState('tgUserId')).then(() => renderPlayerList());
-        } else { renderPlayerList(); }
-      }
-    });
-  }
+  window.addEventListener('dama-balance-changed', updateBetBarState);
+  updateBetBarState();
 }
 
 /* ── Piece / Ball colour themes (15 colors, some premium) ── */

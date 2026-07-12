@@ -104,22 +104,21 @@
 }
 .bet-preset:active { transform:scale(.9); }
 .bet-preset.active { background:rgba(212,160,23,.2);border-color:var(--gold);color:var(--gold); }
+.bet-preset:disabled,
+.bet-preset.disabled {
+  opacity:.45; cursor:not-allowed; pointer-events:none;
+  filter:grayscale(.35); color:rgba(255,255,255,.35);
+}
 .bet-input-wrap {
   display:flex;align-items:center;gap:4px;flex-shrink:0;
   background:rgba(255,255,255,.05);border:1px solid rgba(212,160,23,.3);
-  border-radius:9px;padding:4px 9px;min-width:88px;
+  border-radius:9px;padding:4px 9px;min-width:102px;
 }
 .bet-currency { font-size:.62rem;font-weight:700;color:var(--gold);letter-spacing:.06em; }
-.bet-input {
-  background:none;border:none;outline:none;
+.bet-balance-value {
   color:var(--cream);font-family:'Rajdhani',sans-serif;
-  font-size:.85rem;font-weight:700;width:58px;
-  -webkit-user-select:text;user-select:text;
-  -webkit-tap-highlight-color:transparent;
+  font-size:.85rem;font-weight:700;min-width:54px;
 }
-.bet-input::placeholder { color:rgba(255,255,255,.25); }
-.bet-input::-webkit-inner-spin-button,.bet-input::-webkit-outer-spin-button{-webkit-appearance:none;}
-.bet-input[type=number]{-moz-appearance:textfield;}
 
 /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    HOME BODY  (left list + right sidebar)

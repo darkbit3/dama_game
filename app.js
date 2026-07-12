@@ -5,7 +5,7 @@
 ═══════════════════════════════════════════════════ */
 
 import { initTelegram, populateTelegramUser, tgHaptic, showScreen, initBackButton } from './modules/telegram.js';
-import { initLoader, initParticles, initBetBar, initColorPicker, initCountdown, renderPlayerList, ripple, injectRippleStyle, PIECE_THEMES } from './modules/ui.js';
+import { initLoader, initParticles, initBetBar, initColorPicker, initCountdown, renderPlayerList, ripple, injectRippleStyle, PIECE_THEMES, getCurrentBalanceValue } from './modules/ui.js';
 import { PlayerRegistry } from './modules/registry.js';
 import { startGame, G, executeMove, endGame, requestRematch, handleIncomingRematchRequest, handleRematchAccepted, handleRematchDeclined } from './modules/engine.js';
 import { Socket } from './modules/socket.js';
@@ -98,7 +98,7 @@ function showBetAuditModal(_betLog, _betAmount, _fetchError = null) {}
 
 /* ── startGame (called by UI buttons and socket handlers) ── */
 window.startGame = async function(mode, opponent) {
-  const betAmount = parseInt(document.getElementById('betInput')?.value || '0', 10);
+  const betAmount = Number(getState('currentBet') || 0);
 
   if (mode === 'ai' || (mode === 'pvp' && !getState('activeOnlineGame'))) {
     const me = PlayerRegistry.load().find(p => p.isMe);
@@ -106,6 +106,12 @@ window.startGame = async function(mode, opponent) {
       alert(`Insufficient balance! You only have ${me.balance} ETB.`);
       return;
     }
+  }
+
+  const currentBalance = Number(window.DAMA_BALANCE ?? getState('damaBalance') ?? 0);
+  if (betAmount > currentBalance) {
+    alert('Insufficient balance for this bet.');
+    return false;
   }
 
   if (betAmount > 0 && (mode === 'ai' || (mode === 'pvp' && !getState('activeOnlineGame')))) {
@@ -126,10 +132,11 @@ window.startGame = async function(mode, opponent) {
 
 window.startGameVsPlayer = function(opponent) {
   if (opponent && opponent.id && !opponent.id.startsWith('demo_')) {
-    const betAmount = parseInt(document.getElementById('betInput')?.value || '100', 10);
+    const betAmount = Number(getState('currentBet') || 0);
     const me = PlayerRegistry.load().find(p => p.isMe);
-    if (me && me.balance < betAmount) {
-      alert(`Insufficient balance! You only have ${me.balance} ETB.`);
+    const currentBalance = Number(getCurrentBalanceValue() || me?.balance || 0);
+    if (currentBalance < betAmount) {
+      alert(`Insufficient balance! You only have ${currentBalance} ETB.`);
       return;
     }
 
