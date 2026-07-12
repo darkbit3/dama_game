@@ -932,6 +932,30 @@ function showWinModal(name, reason, iLocalWin = false, betAmt = 0, winnerPayout 
     return;
   }
 
+  if (G.mode === 'ai' || G.mode === 'pvp') {
+    const startFreshGame = () => {
+      modal.classList.add('hidden');
+      modal.classList.remove('modal-show');
+      if (G.mode === 'ai') {
+        startGame('ai', G.opponent || null);
+      } else {
+        startGame('pvp', G.opponent || null);
+      }
+    };
+
+    playAgainBtn?.addEventListener('click', () => {
+      startFreshGame();
+    }, { once: true });
+
+    menuBtn?.addEventListener('click', () => {
+      modal.classList.add('hidden'); modal.classList.remove('modal-show');
+      clearInterval(G.timerInterval);
+      showScreen('mainMenu');
+      renderPlayerList();
+    });
+    return;
+  }
+
   let remaining = 10;
   function updateAutoLabel() {
     if (playAgainBtn)
