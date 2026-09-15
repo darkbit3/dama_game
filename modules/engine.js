@@ -374,15 +374,191 @@ export function renderBoard() {
 }
 
 function buildQueenInner(isBlack) {
-  const gold = '#f0c94a', shine = isBlack ? 'rgba(255,255,255,.25)' : 'rgba(255,255,255,.6)';
+  // King style follows the ball style: map style → king design
+  const styleId = getState('pieceStyleId') || 'solid';
+  const t = getState('pieceTheme') || {};
+  const c1 = t.c1 || (isBlack ? '#555' : '#fff');
+  const c2 = t.c2 || (isBlack ? '#222' : '#ddd');
+  const gold = '#f0c94a';
+  const shine = isBlack ? 'rgba(255,255,255,.22)' : 'rgba(255,255,255,.55)';
+
+  // ── Flame king (fire / lava / venom styles) ─────────────────────────────
+  if (['neon', 'lava'].includes(styleId) || t.id === 'fire' || t.id === 'lava' || t.id === 'venom') {
+    return `<svg class="queen-svg" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="flameKg${isBlack?'b':'w'}" cx="50%" cy="80%">
+          <stop offset="0%" stop-color="#ff6b35"/>
+          <stop offset="60%" stop-color="#e74c3c"/>
+          <stop offset="100%" stop-color="#7b0000"/>
+        </radialGradient>
+      </defs>
+      <!-- Flame tips -->
+      <path d="M20,4 C22,8 26,6 25,2 C28,5 30,10 27,14 C32,10 33,4 30,1 C34,6 36,14 32,18" fill="#ff6b35" opacity=".9"/>
+      <path d="M20,4 C18,8 14,6 15,2 C12,5 10,10 13,14 C8,10 7,4 10,1 C6,6 4,14 8,18" fill="#f0c94a" opacity=".8"/>
+      <!-- Crown base -->
+      <rect x="8" y="26" width="24" height="5" rx="2.5" fill="url(#flameKg${isBlack?'b':'w'})" opacity=".98"/>
+      <polygon points="9,26 13,14 17,23" fill="#e74c3c" opacity=".95"/>
+      <polygon points="17,23 20,10 23,23" fill="#ff6b35"/>
+      <polygon points="23,23 27,14 31,26" fill="#e74c3c" opacity=".95"/>
+      <!-- Gems -->
+      <circle cx="11" cy="27" r="2" fill="#ffcc02" opacity=".9"/>
+      <circle cx="20" cy="25" r="2.5" fill="#ffcc02" opacity=".95"/>
+      <circle cx="29" cy="27" r="2" fill="#ffcc02" opacity=".9"/>
+      <!-- Shine -->
+      <ellipse cx="17" cy="19" rx="5" ry="3" fill="${shine}" transform="rotate(-20,17,19)"/>
+    </svg>`;
+  }
+
+  // ── Diamond / crystal king ───────────────────────────────────────────────
+  if (['diamond', 'crystal', 'metal'].includes(styleId)) {
+    return `<svg class="queen-svg" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="dimKg" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#b0e0ff"/>
+          <stop offset="50%" stop-color="#fff"/>
+          <stop offset="100%" stop-color="#6ab0e0"/>
+        </linearGradient>
+      </defs>
+      <!-- Outer ring -->
+      <circle cx="20" cy="20" r="17" fill="none" stroke="#b0e0ff" stroke-width="1.2" opacity=".7"/>
+      <!-- Crown base -->
+      <rect x="8" y="26" width="24" height="5" rx="2.5" fill="url(#dimKg)" opacity=".95"/>
+      <!-- Diamond spires -->
+      <polygon points="9,26 14,12 18,24" fill="#b0e0ff" opacity=".9"/>
+      <polygon points="16,24 20,7 24,24" fill="#fff" opacity=".95"/>
+      <polygon points="22,24 26,12 31,26" fill="#b0e0ff" opacity=".9"/>
+      <!-- Facet lines -->
+      <line x1="14" y1="12" x2="20" y2="7" stroke="rgba(255,255,255,.5)" stroke-width=".8"/>
+      <line x1="26" y1="12" x2="20" y2="7" stroke="rgba(255,255,255,.5)" stroke-width=".8"/>
+      <!-- Centre gem -->
+      <polygon points="20,14 23,19 20,24 17,19" fill="#b0e0ff" opacity=".9"/>
+      <polygon points="20,14 22,17 20,15 18,17" fill="#fff" opacity=".7"/>
+      <!-- Shine -->
+      <ellipse cx="16" cy="16" rx="4" ry="2.5" fill="rgba(255,255,255,.55)" transform="rotate(-20,16,16)"/>
+    </svg>`;
+  }
+
+  // ── Star / halo king ─────────────────────────────────────────────────────
+  if (['star', 'shadow', 'hex'].includes(styleId)) {
+    return `<svg class="queen-svg" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="starKg" cx="50%" cy="50%">
+          <stop offset="0%" stop-color="${gold}"/>
+          <stop offset="100%" stop-color="#d4a017"/>
+        </radialGradient>
+      </defs>
+      <!-- Halo ring -->
+      <circle cx="20" cy="20" r="17" fill="none" stroke="${gold}" stroke-width="1" stroke-dasharray="3 2" opacity=".6"/>
+      <!-- 8-point star -->
+      <polygon points="
+        20,6  22,14  28,8  23,15  31,17  23,19
+        29,25  22,21  21,29  20,22  19,29  18,21
+        11,25  17,19  9,17  17,15  12,8  18,14"
+        fill="url(#starKg)" opacity=".9"/>
+      <!-- Centre -->
+      <circle cx="20" cy="20" r="4.5" fill="${gold}" opacity=".95"/>
+      <circle cx="20" cy="20" r="2.5" fill="${isBlack?'#fff':'#1a0a00'}" opacity=".85"/>
+      <!-- Sparkles -->
+      <circle cx="13" cy="13" r="1" fill="${gold}" opacity=".7"/>
+      <circle cx="27" cy="13" r="1" fill="${gold}" opacity=".7"/>
+      <circle cx="27" cy="27" r="1" fill="${gold}" opacity=".7"/>
+      <circle cx="13" cy="27" r="1" fill="${gold}" opacity=".7"/>
+      <!-- Shine -->
+      <ellipse cx="17" cy="15" rx="4" ry="2.5" fill="${shine}" transform="rotate(-20,17,15)"/>
+    </svg>`;
+  }
+
+  // ── Wood / marble / dome → Ethiopian Lion (Anbesa) king ─────────────────
+  if (['wood', 'marble', 'dome'].includes(styleId)) {
+    return `<svg class="queen-svg" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="lionKg" cx="40%" cy="30%">
+          <stop offset="0%" stop-color="${gold}"/>
+          <stop offset="100%" stop-color="#b07d10"/>
+        </radialGradient>
+      </defs>
+      <!-- Mane outer halo -->
+      <circle cx="20" cy="18" r="13" fill="none" stroke="${gold}" stroke-width="2.5" opacity=".6"/>
+      <!-- Mane spikes -->
+      <g fill="${gold}" opacity=".75">
+        <ellipse cx="20" cy="5"  rx="2.2" ry="4" transform="rotate(0,20,5)"/>
+        <ellipse cx="28" cy="8"  rx="2.2" ry="4" transform="rotate(45,28,8)"/>
+        <ellipse cx="33" cy="16" rx="2.2" ry="4" transform="rotate(90,33,16)"/>
+        <ellipse cx="30" cy="25" rx="2.2" ry="4" transform="rotate(135,30,25)"/>
+        <ellipse cx="12" cy="8"  rx="2.2" ry="4" transform="rotate(-45,12,8)"/>
+        <ellipse cx="7"  cy="16" rx="2.2" ry="4" transform="rotate(-90,7,16)"/>
+        <ellipse cx="10" cy="25" rx="2.2" ry="4" transform="rotate(-135,10,25)"/>
+      </g>
+      <!-- Face -->
+      <circle cx="20" cy="18" r="9" fill="url(#lionKg)" opacity=".95"/>
+      <!-- Eyes -->
+      <ellipse cx="16.5" cy="16" rx="2" ry="1.8" fill="${isBlack?'#1a0a00':'#3a1500'}"/>
+      <ellipse cx="23.5" cy="16" rx="2" ry="1.8" fill="${isBlack?'#1a0a00':'#3a1500'}"/>
+      <circle cx="16.8" cy="15.5" r=".7" fill="#fff" opacity=".8"/>
+      <circle cx="23.8" cy="15.5" r=".7" fill="#fff" opacity=".8"/>
+      <!-- Nose -->
+      <ellipse cx="20" cy="19.5" rx="1.5" ry="1" fill="${isBlack?'#1a0a00':'#3a1500'}" opacity=".7"/>
+      <!-- Crown above head -->
+      <rect x="14" y="7" width="12" height="3" rx="1.5" fill="${gold}" opacity=".95"/>
+      <polygon points="15,7 17,3 19,7" fill="${gold}" opacity=".9"/>
+      <polygon points="19,7 20,4 21,7" fill="${gold}"/>
+      <polygon points="21,7 23,3 25,7" fill="${gold}" opacity=".9"/>
+      <!-- Shine -->
+      <ellipse cx="17" cy="15" rx="3.5" ry="2" fill="${shine}" transform="rotate(-15,17,15)"/>
+    </svg>`;
+  }
+
+  // ── Pawn style → chess-inspired ornate king ──────────────────────────────
+  if (styleId === 'pawn') {
+    return `<svg class="queen-svg" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="chessKg${isBlack?'b':'w'}" cx="38%" cy="30%">
+          <stop offset="0%" stop-color="${isBlack?'#888':'#fff'}"/>
+          <stop offset="100%" stop-color="${isBlack?'#222':'#bbb'}"/>
+        </radialGradient>
+      </defs>
+      <!-- Chess king symbol -->
+      <circle cx="20" cy="20" r="17" fill="none" stroke="${gold}" stroke-width="1.2" opacity=".55"/>
+      <!-- Cross -->
+      <rect x="18.5" y="7" width="3" height="11" rx="1.5" fill="${gold}" opacity=".95"/>
+      <rect x="14" y="9.5" width="12" height="3" rx="1.5" fill="${gold}" opacity=".95"/>
+      <!-- Body -->
+      <path d="M13,20 Q11,26 14,30 L26,30 Q29,26 27,20 Z" fill="url(#chessKg${isBlack?'b':'w'})" opacity=".9"/>
+      <!-- Belt -->
+      <rect x="13" y="25" width="14" height="2.5" rx="1.2" fill="${gold}" opacity=".8"/>
+      <!-- Collar gems -->
+      <circle cx="16" cy="21" r="1.2" fill="${gold}" opacity=".85"/>
+      <circle cx="20" cy="20.5" r="1.4" fill="${gold}" opacity=".9"/>
+      <circle cx="24" cy="21" r="1.2" fill="${gold}" opacity=".85"/>
+      <!-- Shine -->
+      <ellipse cx="17" cy="22" rx="4" ry="2.5" fill="${shine}" transform="rotate(-15,17,22)"/>
+    </svg>`;
+  }
+
+  // ── Default gold crown (solid / neon fallback) ───────────────────────────
   return `<svg class="queen-svg" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="20" cy="20" r="18" fill="none" stroke="${gold}" stroke-width="1.5" opacity=".7"/>
-    <rect x="8" y="25" width="24" height="5" rx="2.5" fill="${gold}" opacity=".95"/>
-    <polygon points="9,25 12,13 16,22" fill="${gold}" opacity=".95"/>
-    <polygon points="17,22 20,9 23,22" fill="${gold}"/>
-    <polygon points="24,22 28,13 31,25" fill="${gold}" opacity=".95"/>
-    <circle cx="20" cy="20" r="3" fill="${isBlack?'#fff':'#2c1b0e'}" opacity=".8"/>
-    <ellipse cx="17" cy="15" rx="5" ry="3" fill="${shine}" transform="rotate(-20,17,15)"/>
+    <defs>
+      <radialGradient id="crownKg" cx="50%" cy="30%">
+        <stop offset="0%" stop-color="#ffe566"/>
+        <stop offset="100%" stop-color="#b07d10"/>
+      </radialGradient>
+    </defs>
+    <circle cx="20" cy="20" r="17" fill="none" stroke="${gold}" stroke-width="1.5" opacity=".7"/>
+    <rect x="7" y="25" width="26" height="5.5" rx="2.8" fill="url(#crownKg)" opacity=".98"/>
+    <!-- Crown points -->
+    <polygon points="8,25 12,12 16.5,22" fill="${gold}" opacity=".95"/>
+    <polygon points="16.5,22 20,8 23.5,22" fill="${gold}"/>
+    <polygon points="23.5,22 28,12 32,25" fill="${gold}" opacity=".95"/>
+    <!-- Gems on base -->
+    <circle cx="10.5" cy="27" r="2.2" fill="#e74c3c" opacity=".9"/>
+    <circle cx="20"   cy="26" r="2.8" fill="#b0e0ff" opacity=".9"/>
+    <circle cx="29.5" cy="27" r="2.2" fill="#4cde80" opacity=".9"/>
+    <!-- Gem shine dots -->
+    <circle cx="9.8"  cy="26.2" r=".7" fill="#fff" opacity=".7"/>
+    <circle cx="19.2" cy="25.2" r=".9" fill="#fff" opacity=".7"/>
+    <circle cx="28.8" cy="26.2" r=".7" fill="#fff" opacity=".7"/>
+    <!-- Centre shine -->
+    <ellipse cx="17" cy="16" rx="5" ry="3" fill="${shine}" transform="rotate(-20,17,16)"/>
   </svg>`;
 }
 

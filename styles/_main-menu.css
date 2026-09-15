@@ -76,15 +76,6 @@
 }
 .tb-bal-spinner.hidden { display: none; }
 .tb-logo { display:flex;align-items:center;gap:5px;font-family:'Cinzel',serif;font-weight:900;font-size:.9rem;letter-spacing:.18em;color:var(--gold);flex-shrink:0; }
-.tb-countdown { display:flex;flex-direction:column;align-items:center;gap:2px;flex-shrink:0; }
-.cd-ring { position:relative;width:40px;height:40px; }
-.cd-svg { width:40px;height:40px;transform:rotate(-90deg); }
-.cd-bg  { fill:none;stroke:rgba(255,255,255,.08);stroke-width:3; }
-.cd-arc { fill:none;stroke:var(--gold);stroke-width:3;stroke-linecap:round;stroke-dasharray:106.8;stroke-dashoffset:0;transition:stroke-dashoffset .9s linear,stroke .3s; }
-.cd-arc.urgent { stroke:var(--red-light); }
-.cd-num { position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'Cinzel',serif;font-size:.8rem;font-weight:900;color:var(--gold); }
-.cd-num.urgent { color:var(--red-light); }
-.cd-label { font-size:.5rem;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted);font-weight:600; }
 
 /* â”€â”€ BET BAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 .bet-bar {

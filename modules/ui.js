@@ -426,6 +426,7 @@ export function initColorPicker() {
     localStorage.setItem('dama_piece_style', _pendingStyle);
     applyPieceTheme(composed);
     updateTriggerBall(composed);
+    updateCurrentStyleLabel();
     // notify app.js listener via state (bridge keeps window.onPieceThemeChanged in sync)
     if (typeof window.onPieceThemeChanged === 'function') window.onPieceThemeChanged(composed);
     renderPlayerList();
@@ -446,6 +447,7 @@ function openCpModal() {
   refreshStyleGrid();
   // Reset to colors tab
   document.querySelectorAll('.cp-tab').forEach((t,i) => t.classList.toggle('active', i===0));
+  updateCurrentStyleLabel();
   document.getElementById('cpPanelColors').classList.remove('hidden');
   document.getElementById('cpPanelStyle').classList.add('hidden');
 }
@@ -469,6 +471,16 @@ function refreshPreview() {
   }
   if (name) name.textContent = _pendingTheme.name;
   if (styleLbl) styleLbl.textContent = (BALL_STYLES.find(s => s.id === _pendingStyle)||BALL_STYLES[0]).name;
+  updateCurrentStyleLabel();
+}
+
+// Update the displayed current style label in the Colors tab
+function updateCurrentStyleLabel() {
+  const labelEl = document.getElementById('cpCurrentStyleLabel');
+  if (labelEl) {
+    const styleName = (BALL_STYLES.find(s => s.id === _pendingStyle) || BALL_STYLES[0]).name;
+    labelEl.textContent = `Style: ${styleName}`;
+  }
 }
 
 function buildColorGrid() {
@@ -602,6 +614,7 @@ function buildStyleGrid() {
       _pendingStyle = style.id;
       tgHaptic('light');
       refreshPreview(); refreshColorGrid(); refreshStyleGrid();
+      showStylePreviewPopup(style);
     });
     grid.appendChild(item);
   });
@@ -627,6 +640,245 @@ function refreshStyleGrid() {
   });
 }
 
+// ── Style Preview Popup — shows normal piece + king side by side ──────────────
+function buildKingPreviewSVG(composed, styleId = 'solid') {
+  const gold = '#f0c94a';
+  const shine = 'rgba(255,255,255,.22)';
+  const c1 = composed.c1 || '#555';
+
+  if (['neon', 'lava'].includes(styleId) || composed.id === 'fire' || composed.id === 'lava') {
+    return `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;display:block;">
+      <defs><radialGradient id="ppfkg" cx="50%" cy="80%"><stop offset="0%" stop-color="#ff6b35"/><stop offset="100%" stop-color="#7b0000"/></radialGradient></defs>
+      <path d="M20,4 C22,8 26,6 25,2 C28,5 30,10 27,14 C32,10 33,4 30,1 C34,6 36,14 32,18" fill="#ff6b35" opacity=".9"/>
+      <path d="M20,4 C18,8 14,6 15,2 C12,5 10,10 13,14 C8,10 7,4 10,1 C6,6 4,14 8,18" fill="${gold}" opacity=".8"/>
+      <rect x="8" y="26" width="24" height="5" rx="2.5" fill="url(#ppfkg)" opacity=".98"/>
+      <polygon points="9,26 13,14 17,23" fill="#e74c3c" opacity=".95"/>
+      <polygon points="17,23 20,10 23,23" fill="#ff6b35"/>
+      <polygon points="23,23 27,14 31,26" fill="#e74c3c" opacity=".95"/>
+      <circle cx="11" cy="27" r="2" fill="${gold}" opacity=".9"/>
+      <circle cx="20" cy="25" r="2.5" fill="${gold}" opacity=".95"/>
+      <circle cx="29" cy="27" r="2" fill="${gold}" opacity=".9"/>
+      <ellipse cx="17" cy="19" rx="5" ry="3" fill="${shine}" transform="rotate(-20,17,19)"/>
+    </svg>`;
+  }
+  if (['diamond', 'crystal', 'metal'].includes(styleId)) {
+    return `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;display:block;">
+      <defs><linearGradient id="ppdkg" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="#b0e0ff"/><stop offset="50%" stop-color="#fff"/><stop offset="100%" stop-color="#6ab0e0"/></linearGradient></defs>
+      <circle cx="20" cy="20" r="17" fill="none" stroke="#b0e0ff" stroke-width="1.2" opacity=".7"/>
+      <rect x="8" y="26" width="24" height="5" rx="2.5" fill="url(#ppdkg)" opacity=".95"/>
+      <polygon points="9,26 14,12 18,24" fill="#b0e0ff" opacity=".9"/>
+      <polygon points="16,24 20,7 24,24" fill="#fff" opacity=".95"/>
+      <polygon points="22,24 26,12 31,26" fill="#b0e0ff" opacity=".9"/>
+      <polygon points="20,14 23,19 20,24 17,19" fill="#b0e0ff" opacity=".9"/>
+      <ellipse cx="16" cy="16" rx="4" ry="2.5" fill="rgba(255,255,255,.55)" transform="rotate(-20,16,16)"/>
+    </svg>`;
+  }
+  if (['star', 'shadow', 'hex'].includes(styleId)) {
+    return `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;display:block;">
+      <defs><radialGradient id="ppskg" cx="50%" cy="50%"><stop offset="0%" stop-color="${gold}"/><stop offset="100%" stop-color="#d4a017"/></radialGradient></defs>
+      <circle cx="20" cy="20" r="17" fill="none" stroke="${gold}" stroke-width="1" stroke-dasharray="3 2" opacity=".6"/>
+      <polygon points="20,6 22,14 28,8 23,15 31,17 23,19 29,25 22,21 21,29 20,22 19,29 18,21 11,25 17,19 9,17 17,15 12,8 18,14" fill="url(#ppskg)" opacity=".9"/>
+      <circle cx="20" cy="20" r="4.5" fill="${gold}" opacity=".95"/>
+      <circle cx="20" cy="20" r="2.5" fill="#1a0a00" opacity=".85"/>
+      <ellipse cx="17" cy="15" rx="4" ry="2.5" fill="${shine}" transform="rotate(-20,17,15)"/>
+    </svg>`;
+  }
+  if (['wood', 'marble', 'dome'].includes(styleId)) {
+    return `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;display:block;">
+      <defs><radialGradient id="pplkg" cx="40%" cy="30%"><stop offset="0%" stop-color="${gold}"/><stop offset="100%" stop-color="#b07d10"/></radialGradient></defs>
+      <circle cx="20" cy="18" r="13" fill="none" stroke="${gold}" stroke-width="2.5" opacity=".6"/>
+      <g fill="${gold}" opacity=".75">
+        <ellipse cx="20" cy="5"  rx="2.2" ry="4"/>
+        <ellipse cx="28" cy="8"  rx="2.2" ry="4" transform="rotate(45,28,8)"/>
+        <ellipse cx="33" cy="16" rx="2.2" ry="4" transform="rotate(90,33,16)"/>
+        <ellipse cx="12" cy="8"  rx="2.2" ry="4" transform="rotate(-45,12,8)"/>
+        <ellipse cx="7"  cy="16" rx="2.2" ry="4" transform="rotate(-90,7,16)"/>
+      </g>
+      <circle cx="20" cy="18" r="9" fill="url(#pplkg)" opacity=".95"/>
+      <ellipse cx="16.5" cy="16" rx="2" ry="1.8" fill="#1a0a00"/>
+      <ellipse cx="23.5" cy="16" rx="2" ry="1.8" fill="#1a0a00"/>
+      <circle cx="16.8" cy="15.5" r=".7" fill="#fff" opacity=".8"/>
+      <circle cx="23.8" cy="15.5" r=".7" fill="#fff" opacity=".8"/>
+      <ellipse cx="20" cy="19.5" rx="1.5" ry="1" fill="#1a0a00" opacity=".7"/>
+      <rect x="14" y="7" width="12" height="3" rx="1.5" fill="${gold}" opacity=".95"/>
+      <polygon points="15,7 17,3 19,7" fill="${gold}" opacity=".9"/>
+      <polygon points="19,7 20,4 21,7" fill="${gold}"/>
+      <polygon points="21,7 23,3 25,7" fill="${gold}" opacity=".9"/>
+      <ellipse cx="17" cy="15" rx="3.5" ry="2" fill="${shine}" transform="rotate(-15,17,15)"/>
+    </svg>`;
+  }
+  if (styleId === 'pawn') {
+    return `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;display:block;">
+      <circle cx="20" cy="20" r="17" fill="none" stroke="${gold}" stroke-width="1.2" opacity=".55"/>
+      <rect x="18.5" y="7" width="3" height="11" rx="1.5" fill="${gold}" opacity=".95"/>
+      <rect x="14" y="9.5" width="12" height="3" rx="1.5" fill="${gold}" opacity=".95"/>
+      <path d="M13,20 Q11,26 14,30 L26,30 Q29,26 27,20 Z" fill="#888" opacity=".9"/>
+      <rect x="13" y="25" width="14" height="2.5" rx="1.2" fill="${gold}" opacity=".8"/>
+      <circle cx="16" cy="21" r="1.2" fill="${gold}" opacity=".85"/>
+      <circle cx="20" cy="20.5" r="1.4" fill="${gold}" opacity=".9"/>
+      <circle cx="24" cy="21" r="1.2" fill="${gold}" opacity=".85"/>
+      <ellipse cx="17" cy="22" rx="4" ry="2.5" fill="${shine}" transform="rotate(-15,17,22)"/>
+    </svg>`;
+  }
+  // Default crown
+  return `<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;display:block;">
+    <defs><radialGradient id="ppckg" cx="50%" cy="30%"><stop offset="0%" stop-color="#ffe566"/><stop offset="100%" stop-color="#b07d10"/></radialGradient></defs>
+    <circle cx="20" cy="20" r="17" fill="none" stroke="${gold}" stroke-width="1.5" opacity=".7"/>
+    <rect x="7" y="25" width="26" height="5.5" rx="2.8" fill="url(#ppckg)" opacity=".98"/>
+    <polygon points="8,25 12,12 16.5,22" fill="${gold}" opacity=".95"/>
+    <polygon points="16.5,22 20,8 23.5,22" fill="${gold}"/>
+    <polygon points="23.5,22 28,12 32,25" fill="${gold}" opacity=".95"/>
+    <circle cx="10.5" cy="27" r="2.2" fill="#e74c3c" opacity=".9"/>
+    <circle cx="20"   cy="26" r="2.8" fill="#b0e0ff" opacity=".9"/>
+    <circle cx="29.5" cy="27" r="2.2" fill="#4cde80" opacity=".9"/>
+    <ellipse cx="17" cy="16" rx="5" ry="3" fill="${shine}" transform="rotate(-20,17,16)"/>
+  </svg>`;
+}
+
+function buildStylePreviewPiece(style, composed, isKing) {
+  const wrap = document.createElement('div');
+  wrap.className = 'spp-piece-wrap';
+
+  if (isKing) {
+    const disc = document.createElement('div');
+    disc.className = 'spp-piece gp-shape-disc spp-king';
+    disc.style.cssText = ballInlineStyle(composed);
+    disc.innerHTML = buildKingPreviewSVG(composed, style.id);
+    wrap.appendChild(disc);
+    const lbl = document.createElement('span');
+    lbl.className = 'spp-label'; lbl.textContent = 'King (Dama)';
+    wrap.appendChild(lbl);
+    return wrap;
+  }
+
+  // Normal piece — use shape-specific rendering
+  if (style.id === 'pawn') {
+    const el = document.createElement('div');
+    el.className = 'spp-piece spp-pawn';
+    el.innerHTML = `<svg viewBox="0 0 40 52" xmlns="http://www.w3.org/2000/svg"
+      style="width:100%;height:100%;display:block;">
+      <defs><radialGradient id="sppg" cx="38%" cy="30%">
+        <stop offset="0%" stop-color="${composed.c1}"/>
+        <stop offset="100%" stop-color="${composed.c2}"/>
+      </radialGradient></defs>
+      <rect x="7" y="44" width="26" height="6" rx="3" fill="url(#sppg)" stroke="${composed.border}" stroke-width="1.2"/>
+      <rect x="15" y="30" width="10" height="15" rx="4" fill="url(#sppg)" stroke="${composed.border}" stroke-width="1"/>
+      <circle cx="20" cy="20" r="11" fill="url(#sppg)" stroke="${composed.border}" stroke-width="1.5"/>
+      <ellipse cx="16" cy="16" rx="5" ry="3" fill="rgba(255,255,255,.28)" transform="rotate(-20,16,16)"/>
+    </svg>`;
+    wrap.appendChild(el);
+  } else if (style.id === 'hex') {
+    const el = document.createElement('div');
+    el.className = 'spp-piece';
+    el.style.cssText = `width:52px;height:60px;border-radius:0;
+      background:linear-gradient(160deg,${composed.c1},${composed.c2});
+      clip-path:polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%);
+      box-shadow:0 4px 14px rgba(0,0,0,.6);`;
+    wrap.appendChild(el);
+  } else if (style.id === 'star') {
+    const el = document.createElement('div');
+    el.className = 'spp-piece';
+    el.style.cssText = `width:56px;height:56px;border-radius:0;
+      background:linear-gradient(135deg,${composed.c1},${composed.c2});
+      clip-path:polygon(50% 0%,61% 35%,98% 35%,68% 57%,79% 91%,50% 70%,21% 91%,32% 57%,2% 35%,39% 35%);
+      box-shadow:0 4px 14px rgba(0,0,0,.6);`;
+    wrap.appendChild(el);
+  } else if (style.id === 'diamond') {
+    const el = document.createElement('div');
+    el.className = 'spp-piece';
+    el.style.cssText = `width:52px;height:52px;border-radius:0;
+      background:linear-gradient(135deg,${composed.c1},${composed.c2},${composed.c3});
+      clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);
+      box-shadow:0 4px 14px rgba(0,0,0,.6);`;
+    wrap.appendChild(el);
+  } else {
+    // All standard disc-based styles
+    const el = document.createElement('div');
+    el.className = 'spp-piece ' + style.shape;
+    el.style.cssText = ballInlineStyle(composed);
+    wrap.appendChild(el);
+  }
+
+  const lbl = document.createElement('span');
+  lbl.className = 'spp-label'; lbl.textContent = 'Piece';
+  wrap.appendChild(lbl);
+  return wrap;
+}
+
+function showStylePreviewPopup(style) {
+  // Remove any existing popup
+  document.getElementById('stylePreviewPopup')?.remove();
+
+  const composed = applyStyleToTheme(_pendingTheme, style.id);
+
+  const popup = document.createElement('div');
+  popup.id = 'stylePreviewPopup';
+  popup.className = 'spp-overlay';
+
+  popup.innerHTML = `
+    <div class="spp-box">
+      <div class="spp-header">
+        <span class="spp-title">✦ ${style.name} Style</span>
+        <button class="spp-close" id="sppClose">✕</button>
+      </div>
+      <p class="spp-desc">${style.desc} — preview of both piece types</p>
+      <div class="spp-pieces-row" id="sppPiecesRow"></div>
+      <button class="spp-apply-btn" id="sppApply">✔ Apply This Style</button>
+    </div>`;
+
+  document.querySelector('.cp-modal-box')?.appendChild(popup);
+
+  // Build the two piece previews
+  const row = popup.querySelector('#sppPiecesRow');
+  row.appendChild(buildStylePreviewPiece(style, composed, false));
+
+  // Separator
+  const sep = document.createElement('div');
+  sep.className = 'spp-sep'; sep.textContent = '👑';
+  row.appendChild(sep);
+
+  row.appendChild(buildStylePreviewPiece(style, composed, true));
+
+  // Animate in
+  requestAnimationFrame(() => popup.classList.add('spp-show'));
+
+  // Close on ✕
+  popup.querySelector('#sppClose').addEventListener('click', () => {
+    popup.classList.remove('spp-show');
+    setTimeout(() => popup.remove(), 220);
+  });
+
+  // Apply button — set the style and close the cp modal
+  popup.querySelector('#sppApply').addEventListener('click', () => {
+    const pendingStyleObj = BALL_STYLES.find(s => s.id === style.id) || BALL_STYLES[0];
+    if (!isOwned(pendingStyleObj)) { showPurchaseToast(pendingStyleObj); return; }
+
+    const finalComposed = applyStyleToTheme(_pendingTheme, style.id);
+    setState('pieceTheme',    finalComposed);
+    setState('pieceThemeId',  _pendingTheme.id);
+    setState('pieceStyleId',  style.id);
+    localStorage.setItem('dama_piece_theme', _pendingTheme.id);
+    localStorage.setItem('dama_piece_style', style.id);
+    applyPieceTheme(finalComposed);
+    updateTriggerBall(finalComposed);
+    if (typeof window.onPieceThemeChanged === 'function') window.onPieceThemeChanged(finalComposed);
+    renderPlayerList();
+    tgHaptic('success');
+
+    popup.classList.remove('spp-show');
+    setTimeout(() => popup.remove(), 220);
+    closeCpModal();
+  });
+
+  // Click backdrop to dismiss
+  popup.addEventListener('click', e => {
+    if (e.target === popup) {
+      popup.classList.remove('spp-show');
+      setTimeout(() => popup.remove(), 220);
+    }
+  });
+}
+
 export function applyPieceTheme(theme) {
   const root = document.documentElement;
   root.style.setProperty('--piece-b1', theme.c1);
@@ -647,44 +899,9 @@ export function applyPieceTheme(theme) {
   }
 }
 
-/* ── Countdown timer (15s, repeating) ── */
+/* ── Countdown timer — removed ── */
 export function initCountdown() {
-  const numEl = document.getElementById('cdNum');
-  const arcEl = document.getElementById('cdArc');
-  if (!numEl || !arcEl) return;
-
-  const TOTAL = 15;
-  const CIRC  = 106.8;
-  let remaining = TOTAL;
-
-  function tick() {
-    numEl.textContent = remaining;
-    arcEl.style.strokeDashoffset = CIRC * (1 - remaining / TOTAL);
-
-    if (remaining <= 5) {
-      arcEl.classList.add('urgent');
-      numEl.classList.add('urgent');
-      tgHaptic('light');
-    } else {
-      arcEl.classList.remove('urgent');
-      numEl.classList.remove('urgent');
-    }
-
-    if (remaining === 0) {
-      rotatePlayerList();
-      remaining = TOTAL;
-    } else {
-      remaining--;
-    }
-  }
-
-  tick();
-  setInterval(tick, 1000);
-}
-
-function rotatePlayerList() {
-  // Just re-render — don't mutate real player data
-  renderPlayerList();
+  // Countdown has been removed from the UI.
 }
 
 /* ── Player list ── */
